@@ -24,6 +24,7 @@ export const state = {
     viruses: [],
     dnaFragments: [],
     foodParticles: [],
+    corpses: [],                         // Dead agent bodies that can be eaten
 
     // === ENVIRONMENT ===
     environment: null,
@@ -69,7 +70,8 @@ export const state = {
         viralLoad: 0,
         dnaFragmentCount: 0,
         totalResources: 0,
-        foodCount: 0
+        foodCount: 0,
+        corpseCount: 0
     },
 
     // === HISTORY ===
@@ -115,6 +117,7 @@ export function resetState() {
     state.viruses = [];
     state.dnaFragments = [];
     state.foodParticles = [];
+    state.corpses = [];
 
     state.environment = null;
 
@@ -151,7 +154,9 @@ export function resetState() {
         avgEnergy: 0,
         viralLoad: 0,
         dnaFragmentCount: 0,
-        totalResources: 0
+        totalResources: 0,
+        foodCount: 0,
+        corpseCount: 0
     };
 
     state.history = {
@@ -214,6 +219,7 @@ export function updateStats() {
     state.stats.viralLoad = state.viruses.length;
     state.stats.dnaFragmentCount = state.dnaFragments.length;
     state.stats.foodCount = state.foodParticles.length;
+    state.stats.corpseCount = state.corpses.length;
 
     // Total resources (calculated by environment system)
     // state.stats.totalResources updated externally

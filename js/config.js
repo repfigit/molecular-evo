@@ -76,6 +76,19 @@ export const CONFIG = {
 
     CATASTROPHE_CHANCE: 0.0001,         // Per tick chance
 
+    // === PREDATION & SCAVENGING ===
+    CARNIVORY_ATTACK_RANGE: 20,         // Range for predation attacks
+    CARNIVORY_ATTACK_COST: 5,           // Energy cost to attempt a kill
+    CARNIVORY_SUCCESS_RATE_BASE: 0.3,   // Base success rate for kills
+    CARNIVORY_ENERGY_EFFICIENCY: 0.10,  // Fraction of victim's energy gained (10% rule - realistic trophic efficiency)
+    CARNIVORY_COOLDOWN: 30,             // Ticks between predation attempts
+    PREDATION_HANDLING_TIME_PER_NODE: 10, // Handling time per prey node (Holling Type II)
+    SCAVENGE_RANGE: 15,                 // Range for eating corpses
+    SCAVENGE_RATE: 5,                   // Energy consumed from corpse per tick
+    CORPSE_DECAY_RATE: 0.02,            // How fast corpses lose energy per tick
+    CORPSE_MAX_AGE: 500,                // Ticks before corpse disappears
+    CORPSE_BASE_ENERGY: 10,             // Base energy per node in corpse
+
     // === PHYSICS ===
     BASE_DRAG: 0.1,
     SURFACE_FRICTION: 0.3,
@@ -97,6 +110,24 @@ export const CONFIG = {
     INITIAL_MOTOR_CHANCE: 0.3,
     INITIAL_SENSOR_CHANCE: 0.2,
 
+    // === SENESCENCE (Aging) ===
+    // Gompertz-Makeham mortality model: baseline + exponential age-dependent component
+    SENESCENCE_AGE: 500,                // Age at which senescence begins
+    BASELINE_MORTALITY: 0.0001,         // Constant background mortality rate per tick
+    AGING_RATE: 0.0005,                 // Exponential aging rate after senescence age
+
+    // === DENSITY-DEPENDENT EFFECTS ===
+    // Population regulation without hard culling
+    DENSITY_METABOLISM_THRESHOLD: 0.8,  // Density (as fraction of target) at which metabolism increases
+    DENSITY_METABOLISM_MULTIPLIER: 2.0, // Max metabolism increase at high density
+    DENSITY_REPRODUCTION_THRESHOLD: 0.7,// Density at which reproduction becomes harder
+    DENSITY_REPRODUCTION_PENALTY: 50,   // Energy penalty to reproduction threshold at max density
+
+    // === NICHE PARTITIONING ===
+    // Character displacement and competitive exclusion
+    NICHE_COMPETITION_STRENGTH: 0.5,    // Energy cost from competition (scaled by overlap)
+    NICHE_SIZE_FACTOR: 10,              // Size difference that eliminates overlap
+
     // === EVOLUTION ===
     ELITISM_RATE: 0.1,
     SURVIVAL_RATE: 0.5,
@@ -105,14 +136,14 @@ export const CONFIG = {
     REPRODUCTION_ENERGY_THRESHOLD: 80,
     REPRODUCTION_ENERGY_COST: 30,
 
-    // Mutation rates
-    BASE_MUTATION_RATE: 0.1,            // Overall mutation rate multiplier
-    POINT_MUTATION_RATE: 0.1,
+    // Mutation rates (reduced for mutation-selection balance)
+    BASE_MUTATION_RATE: 0.05,           // Overall mutation rate multiplier (was 0.1)
+    POINT_MUTATION_RATE: 0.03,          // Per-trait mutation rate (was 0.1)
     POINT_MUTATION_STRENGTH: 0.1,       // Max change per mutation
-    ADD_NODE_RATE: 0.02,
-    REMOVE_NODE_RATE: 0.02,
-    ADD_LINK_RATE: 0.03,
-    REMOVE_LINK_RATE: 0.03,
+    ADD_NODE_RATE: 0.002,               // Structural mutations are rare (10x less than point mutations)
+    REMOVE_NODE_RATE: 0.002,
+    ADD_LINK_RATE: 0.005,               // Link changes slightly more common than node changes
+    REMOVE_LINK_RATE: 0.005,
     ADD_MOTOR_RATE: 0.02,
     REMOVE_MOTOR_RATE: 0.02,
     ADD_SENSOR_RATE: 0.02,
@@ -146,6 +177,8 @@ export const CONFIG = {
     COOPERATIVE_HGT_BONUS: 0.1,
     KIN_RECOGNITION_THRESHOLD: 10,
     RESOURCE_SHARE_RATE: 0.5,
+    COOPERATION_LINK_COST: 0.05,        // Energy cost per link per tick
+    COOPERATION_DUNBAR_PENALTY: 0.1,    // Additional cost multiplier per extra link (Dunbar's number effect)
 
     // === COMPETITION ===
     COMPETITION_RANGE: 50,
@@ -257,6 +290,7 @@ export const CONFIG = {
     ENABLE_IMMUNITY: true,
     ENABLE_CATASTROPHES: true,
     ENABLE_MUTATIONS: true,
+    ENABLE_PREDATION: true,
 
     // === PERFORMANCE ===
     MAX_SPEED: 32,                      // Maximum speed multiplier
@@ -277,7 +311,8 @@ export const SENSOR_TYPES = [
     'proximity',
     'kin',
     'signal',
-    'viral'
+    'viral',
+    'prey'
 ];
 
 // Food types available
@@ -285,7 +320,9 @@ export const FOOD_TYPES = [
     'chemical_A',
     'chemical_B',
     'light',
-    'organic_matter'
+    'organic_matter',
+    'living_agent',
+    'dead_agent'
 ];
 
 // Waste products

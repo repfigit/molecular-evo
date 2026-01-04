@@ -97,6 +97,65 @@ export function distanceSquared(a, b) {
 }
 
 /**
+ * Wrapped distance for toroidal world
+ * Returns the shortest distance accounting for wrap-around
+ */
+export function wrappedDistance(a, b, worldWidth, worldHeight) {
+    let dx = Math.abs(b.x - a.x);
+    let dy = Math.abs(b.y - a.y);
+
+    // Check if wrapping is shorter
+    if (dx > worldWidth / 2) {
+        dx = worldWidth - dx;
+    }
+    if (dy > worldHeight / 2) {
+        dy = worldHeight - dy;
+    }
+
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+/**
+ * Wrapped distance squared for toroidal world (faster)
+ */
+export function wrappedDistanceSquared(a, b, worldWidth, worldHeight) {
+    let dx = Math.abs(b.x - a.x);
+    let dy = Math.abs(b.y - a.y);
+
+    if (dx > worldWidth / 2) {
+        dx = worldWidth - dx;
+    }
+    if (dy > worldHeight / 2) {
+        dy = worldHeight - dy;
+    }
+
+    return dx * dx + dy * dy;
+}
+
+/**
+ * Get wrapped delta vector (shortest path accounting for wrapping)
+ */
+export function wrappedDelta(from, to, worldWidth, worldHeight) {
+    let dx = to.x - from.x;
+    let dy = to.y - from.y;
+
+    // Wrap to shortest path
+    if (dx > worldWidth / 2) {
+        dx -= worldWidth;
+    } else if (dx < -worldWidth / 2) {
+        dx += worldWidth;
+    }
+
+    if (dy > worldHeight / 2) {
+        dy -= worldHeight;
+    } else if (dy < -worldHeight / 2) {
+        dy += worldHeight;
+    }
+
+    return { x: dx, y: dy };
+}
+
+/**
  * Linear interpolation between two vectors
  */
 export function lerpVec(a, b, t) {

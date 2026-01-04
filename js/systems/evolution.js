@@ -15,12 +15,15 @@ import {
     mutateGenome,
     crossoverGenomes,
     geneticDistance,
-    isSameSpecies
+    isSameSpecies,
+    calculateMateCompatibility,
+    calculateHybridFitnessPenalty
 } from '../core/genome.js';
 import { randomInt } from '../utils/math.js';
-import { createAgent, shouldDie, killAgent } from '../core/agent.js';
+import { createAgent, shouldDie, killAgent, createOffspringLineage } from '../core/agent.js';
 import { addOrganicMatter } from './environment.js';
 import { updateSpeciesTracking } from '../core/species.js';
+import { createCorpse } from './corpse.js';
 
 /**
  * Process one evolution cycle
@@ -47,9 +50,14 @@ export function processEvolution(dt) {
         state.agents.push(agent);
     }
 
-    // Population control
-    if (state.agents.filter(a => a.alive).length > CONFIG.TARGET_POPULATION * 1.5) {
-        cullWeakest(state.agents.filter(a => a.alive).length - CONFIG.TARGET_POPULATION);
+    // Population control - softened culling as backup only
+    // Primary regulation is through density-dependent effects
+    // Only cull if population exceeds 2x target (emergency overflow prevention)
+    const livingCount = state.agents.filter(a => a.alive).length;
+    if (livingCount > CONFIG.TARGET_POPULATION * 2) {
+        // Cull only the excess over 1.5x (not all the way back to target)
+        const excessCount = livingCount - Math.floor(CONFIG.TARGET_POPULATION * 1.5);
+        cullWeakest(excessCount);
     }
 
     // Update species tracking
@@ -70,15 +78,24 @@ function processDeaths(agents) {
 
     for (const agent of agents) {
         if (shouldDie(agent)) {
+            // Determine cause of death
+            const wasEaten = agent.energy <= -100;  // Predation sets energy to -1000
+            const cause = wasEaten ? 'eaten' : (agent.energy <= 0 ? 'starvation' : 'age');
+
+            // Create corpse only if not eaten (predators consume the body)
+            if (!wasEaten && agent.energy > -100) {
+                createCorpse(agent);
+            }
+
             killAgent(agent);
             deaths.push(agent);
 
-            // Release organic matter
-            if (state.environment) {
+            // Also release some organic matter to environment
+            if (state.environment && !wasEaten) {
                 addOrganicMatter(
                     agent.position.x,
                     agent.position.y,
-                    agent.genome.nodes.length * 0.1
+                    agent.genome.nodes.length * 0.05  // Reduced since corpse holds most energy
                 );
             }
 
@@ -86,7 +103,7 @@ function processDeaths(agents) {
                 agentId: agent.id,
                 species: agent.genome.species_marker,
                 age: agent.age,
-                cause: agent.energy <= 0 ? 'starvation' : 'age'
+                cause
             });
         }
     }
@@ -95,33 +112,70 @@ function processDeaths(agents) {
 }
 
 /**
+ * Calculate density-dependent effects on population
+ * Replaces hard culling with gradual scramble competition
+ */
+export function getDensityEffects() {
+    const currentPop = state.agents.filter(a => a.alive).length;
+    const density = currentPop / CONFIG.TARGET_POPULATION;
+
+    // Metabolism increases at high density (scramble competition)
+    // Starts increasing at 80% of carrying capacity
+    const metabolismMultiplier = 1 + Math.max(0, density - CONFIG.DENSITY_METABOLISM_THRESHOLD) *
+                                  CONFIG.DENSITY_METABOLISM_MULTIPLIER;
+
+    // Reproduction threshold increases at high density
+    // Harder to accumulate enough energy when crowded
+    const reproductionPenalty = Math.max(0, density - CONFIG.DENSITY_REPRODUCTION_THRESHOLD) *
+                                CONFIG.DENSITY_REPRODUCTION_PENALTY;
+
+    return {
+        density,
+        metabolismMultiplier,
+        reproductionPenalty
+    };
+}
+
+/**
  * Check if an agent can reproduce
+ * Now includes density-dependent reproduction threshold
  */
 export function canReproduce(agent) {
     if (!agent.alive) return false;
 
-    const energyThreshold = CONFIG.REPRODUCTION_ENERGY_THRESHOLD;
+    // Get density-dependent penalty
+    const densityEffects = getDensityEffects();
+
+    // Base threshold + density penalty
+    const energyThreshold = CONFIG.REPRODUCTION_ENERGY_THRESHOLD + densityEffects.reproductionPenalty;
 
     return agent.energy >= energyThreshold;
 }
 
 /**
  * Calculate fitness for an agent
+ *
+ * NOTE: Fitness here represents EXPECTED reproductive success based on traits,
+ * not REALIZED fitness (actual offspring). In evolutionary biology, fitness IS
+ * reproductive success - including offspring count here would be tautological.
+ * Instead, we use energy, survival, and other traits as proxies for expected fitness.
+ * Actual offspring count is tracked separately as the true measure of realized fitness.
  */
 export function calculateFitness(agent) {
     let fitness = 0;
 
-    // Survival component (age)
+    // Survival component (age) - longer survival = more opportunities to reproduce
     fitness += agent.age * CONFIG.FITNESS_WEIGHTS.survival;
 
-    // Energy efficiency
+    // Energy efficiency - high energy = ability to reproduce
     const energyRatio = agent.energy / agent.genome.metabolism.storage_capacity;
     fitness += energyRatio * CONFIG.FITNESS_WEIGHTS.energy;
 
-    // Offspring count
-    fitness += agent.offspring_count * CONFIG.FITNESS_WEIGHTS.offspring;
+    // Total energy gathered - proxy for foraging success
+    const energyGathered = agent.total_energy_gathered || 0;
+    fitness += Math.log1p(energyGathered) * CONFIG.FITNESS_WEIGHTS.energy * 0.5;
 
-    // Distance traveled (exploration)
+    // Distance traveled (exploration) - may find new resources
     const distFromStart = Math.sqrt(
         Math.pow(agent.position.x - agent.startPosition.x, 2) +
         Math.pow(agent.position.y - agent.startPosition.y, 2)
@@ -228,8 +282,9 @@ function processReproduction(eligible) {
     const newAgents = [];
 
     for (const parent of eligible) {
-        // Decide reproduction type (30% chance of sexual reproduction)
-        const sexualChance = CONFIG.SEXUAL_REPRODUCTION_RATE || 0.3;
+        // Decide reproduction type based on parent's evolved sexual tendency
+        // (Red Queen hypothesis: sex should evolve under parasite pressure)
+        const sexualChance = parent.genome.metabolism.sexual_tendency ?? CONFIG.SEXUAL_REPRODUCTION_RATE ?? 0.3;
         const useSexual = Math.random() < sexualChance;
 
         if (useSexual) {
@@ -280,30 +335,54 @@ function processReproduction(eligible) {
 
 /**
  * Find a suitable mate for an agent
+ *
+ * Uses reproductive isolation mechanisms:
+ * 1. Pre-zygotic barrier: Mate signal/preference matching
+ * 2. Species preference: Same species preferred
+ * 3. Genetic compatibility: Can't mate if too genetically distant
  */
 function findMate(agent, candidates) {
-    // Prefer same species (kin)
-    const sameSpecies = candidates.filter(c =>
-        c !== agent &&
-        c.alive &&
-        canReproduce(c) &&
+    // Filter for basic requirements and mate compatibility (pre-zygotic barrier)
+    const potentialMates = candidates.filter(c => {
+        if (c === agent || !c.alive || !canReproduce(c)) return false;
+
+        // Pre-zygotic barrier: Check mate recognition signals
+        const compatibility = calculateMateCompatibility(agent.genome, c.genome);
+        if (compatibility === 0) return false;  // Rejected by mate choice
+
+        return true;
+    });
+
+    if (potentialMates.length === 0) return null;
+
+    // Prefer same species (kin) - strong preference
+    const sameSpecies = potentialMates.filter(c =>
         isSameSpecies(agent.genome, c.genome)
     );
 
     if (sameSpecies.length > 0) {
-        // Tournament selection among same species
-        return tournamentSelect(sameSpecies, CONFIG.TOURNAMENT_SIZE);
+        // Score by mate compatibility and fitness
+        const scored = sameSpecies.map(c => ({
+            agent: c,
+            score: calculateMateCompatibility(agent.genome, c.genome) * (c.fitness || 1)
+        }));
+
+        // Sort by score (best first)
+        scored.sort((a, b) => b.score - a.score);
+
+        // Tournament selection with bias toward higher compatibility
+        const topCandidates = scored.slice(0, Math.min(scored.length, CONFIG.TOURNAMENT_SIZE * 2));
+        return topCandidates[Math.floor(Math.random() * Math.min(3, topCandidates.length))].agent;
     }
 
-    // Fall back to any compatible candidate
-    const compatible = candidates.filter(c =>
-        c !== agent &&
-        c.alive &&
-        canReproduce(c) &&
+    // Fall back to any compatible candidate (cross-species mating is rare)
+    const compatible = potentialMates.filter(c =>
         geneticDistance(agent.genome, c.genome) < CONFIG.CROSSOVER_MAX_DISTANCE
     );
 
     if (compatible.length > 0) {
+        // Lower probability of cross-species mating
+        if (Math.random() > 0.3) return null;  // 70% chance to reject cross-species
         return tournamentSelect(compatible, CONFIG.TOURNAMENT_SIZE);
     }
 
@@ -349,8 +428,24 @@ function tournamentSelect(population, tournamentSize) {
 
 /**
  * Asexual reproduction (clone + mutate)
+ * Uses life history traits for r/K selection dynamics
  */
 function asexualReproduction(parent) {
+    // Get life history traits with defaults
+    const lifeHistory = parent.genome.metabolism.life_history || {
+        offspring_investment: 0.4,
+        clutch_size: 1,
+        maturation_age: 100
+    };
+
+    // Check maturation age
+    if (parent.age < lifeHistory.maturation_age) {
+        return null;  // Too young to reproduce
+    }
+
+    // Calculate energy per offspring based on investment trait
+    const energyPerChild = lifeHistory.offspring_investment * parent.genome.metabolism.storage_capacity;
+
     // Clone parent genome
     const childGenome = cloneGenome(parent.genome);
 
@@ -378,8 +473,15 @@ function asexualReproduction(parent) {
         });
     }
 
-    // Create offspring
-    const offspring = createAgent(childGenome);
+    // Create offspring lineage for Hamilton's Rule kin selection
+    const offspringLineage = createOffspringLineage([parent], state.generation);
+
+    // Create offspring with lineage information
+    const offspring = createAgent(childGenome, {
+        parent_ids: offspringLineage.parent_ids,
+        ancestor_chain: offspringLineage.ancestor_chain,
+        generation_born: offspringLineage.generation_born
+    });
 
     // Position near parent
     const angle = Math.random() * Math.PI * 2;
@@ -391,20 +493,37 @@ function asexualReproduction(parent) {
     offspring.position.x = Math.max(10, Math.min(CONFIG.WORLD_WIDTH - 10, offspring.position.x));
     offspring.position.y = Math.max(10, Math.min(CONFIG.WORLD_HEIGHT - 10, offspring.position.y));
 
-    // Give initial energy
-    offspring.energy = parent.energy * 0.3;
+    // Give initial energy based on life history investment
+    offspring.energy = energyPerChild;
     offspring.startPosition = { x: offspring.position.x, y: offspring.position.y };
-
-    // Record lineage
-    offspring.parentId = parent.id;
 
     return offspring;
 }
 
 /**
  * Sexual reproduction (crossover + mutate)
+ * Uses life history traits from both parents
  */
 function sexualReproduction(parent1, parent2) {
+    // Get life history traits (average of both parents)
+    const lifeHistory1 = parent1.genome.metabolism.life_history || {
+        offspring_investment: 0.4, maturation_age: 100
+    };
+    const lifeHistory2 = parent2.genome.metabolism.life_history || {
+        offspring_investment: 0.4, maturation_age: 100
+    };
+
+    // Check maturation age for both parents
+    const avgMaturationAge = (lifeHistory1.maturation_age + lifeHistory2.maturation_age) / 2;
+    if (parent1.age < avgMaturationAge || parent2.age < avgMaturationAge) {
+        return null;  // One or both too young
+    }
+
+    // Average investment from both parents
+    const avgInvestment = (lifeHistory1.offspring_investment + lifeHistory2.offspring_investment) / 2;
+    const avgCapacity = (parent1.genome.metabolism.storage_capacity + parent2.genome.metabolism.storage_capacity) / 2;
+    const energyPerChild = avgInvestment * avgCapacity;
+
     // Create child genome through crossover
     const childGenome = crossoverGenomes(parent1.genome, parent2.genome);
 
@@ -452,8 +571,15 @@ function sexualReproduction(parent1, parent2) {
         });
     }
 
-    // Create offspring
-    const offspring = createAgent(childGenome);
+    // Create offspring lineage for Hamilton's Rule kin selection
+    const offspringLineage = createOffspringLineage([parent1, parent2], state.generation);
+
+    // Create offspring with lineage information
+    const offspring = createAgent(childGenome, {
+        parent_ids: offspringLineage.parent_ids,
+        ancestor_chain: offspringLineage.ancestor_chain,
+        generation_born: offspringLineage.generation_born
+    });
 
     // Position between parents
     offspring.position.x = (parent1.position.x + parent2.position.x) / 2;
@@ -467,13 +593,42 @@ function sexualReproduction(parent1, parent2) {
     offspring.position.x = Math.max(10, Math.min(CONFIG.WORLD_WIDTH - 10, offspring.position.x));
     offspring.position.y = Math.max(10, Math.min(CONFIG.WORLD_HEIGHT - 10, offspring.position.y));
 
-    // Give initial energy (from both parents)
-    offspring.energy = (parent1.energy * 0.15) + (parent2.energy * 0.15);
+    // Give initial energy based on life history investment
+    offspring.energy = energyPerChild;
     offspring.startPosition = { x: offspring.position.x, y: offspring.position.y };
 
-    // Record lineage
-    offspring.parent1Id = parent1.id;
-    offspring.parent2Id = parent2.id;
+    // === POST-ZYGOTIC BARRIER: Hybrid fitness penalty ===
+    // Hybrids between genetically distant parents suffer reduced fitness
+    // This models Dobzhansky-Muller incompatibilities
+    const hybridPenalty = calculateHybridFitnessPenalty(parent1.genome, parent2.genome);
+
+    if (hybridPenalty > 0) {
+        // Apply penalty as reduced starting energy
+        // Severe hybrids may not survive at all
+        offspring.energy *= (1 - hybridPenalty * 0.5);  // Up to 50% energy reduction
+
+        // Mark as hybrid for tracking
+        offspring.isHybrid = true;
+        offspring.hybridPenalty = hybridPenalty;
+
+        // Very incompatible hybrids may be inviable (stillborn)
+        if (hybridPenalty > 0.8 && Math.random() < hybridPenalty) {
+            logEvent('hybrid_inviability', {
+                parent1Species: parent1.genome.species_marker,
+                parent2Species: parent2.genome.species_marker,
+                geneticDistance: geneticDistance(parent1.genome, parent2.genome),
+                penalty: hybridPenalty
+            });
+            return null;  // Hybrid is inviable - post-zygotic isolation
+        }
+
+        logEvent('hybrid_birth', {
+            offspringId: offspring.id,
+            parent1Species: parent1.genome.species_marker,
+            parent2Species: parent2.genome.species_marker,
+            hybridPenalty: hybridPenalty
+        });
+    }
 
     return offspring;
 }

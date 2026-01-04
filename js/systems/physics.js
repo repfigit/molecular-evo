@@ -13,6 +13,7 @@ import { CONFIG } from '../config.js';
 import { state } from '../state.js';
 import { vec, add, subtract, scale, length, normalize, distance } from '../utils/math.js';
 import { SpatialHash } from '../utils/spatial.js';
+import { checkBarrierCrossing } from './environment.js';
 
 // Physics spatial hash for collision detection
 let collisionHash = null;
@@ -278,9 +279,23 @@ function integrate(agent, dt) {
             node.velocity.y *= factor;
         }
 
+        // Store old position for barrier checking
+        const oldX = node.position.x;
+        const oldY = node.position.y;
+
         // Update position
         node.position.x += node.velocity.x * dt;
         node.position.y += node.velocity.y * dt;
+
+        // Check for geographic barrier crossing (allopatric speciation)
+        const barrierCheck = checkBarrierCrossing(oldX, oldY, node.position.x, node.position.y);
+        if (barrierCheck.blocked) {
+            // Barrier blocks movement - revert position and reflect velocity
+            node.position.x = oldX;
+            node.position.y = oldY;
+            node.velocity.x *= -0.5;  // Partial bounce
+            node.velocity.y *= -0.5;
+        }
     }
 }
 
@@ -461,6 +476,41 @@ export function updateSensors(agent, environment, nearbyAgents) {
             case 'signal':
                 // Detect communication signals (placeholder)
                 sensor.current_value = 0;
+                break;
+
+            case 'prey':
+                // Detect potential prey (living agents or corpses based on target)
+                let preySignal = 0;
+                const target = sensor.target || 'both';
+
+                // Detect living agents as prey
+                if (target === 'living' || target === 'both') {
+                    for (const other of nearbyAgents) {
+                        if (other === agent || !other.alive) continue;
+                        const dist = distance(agent.position, other.position);
+                        if (dist <= sensor.range) {
+                            // Stronger signal for weaker/smaller prey
+                            const sizeRatio = agent.genome.nodes.length / other.genome.nodes.length;
+                            const energyRatio = agent.energy / (other.energy + 1);
+                            const preyValue = Math.min(1, (sizeRatio + energyRatio) / 2);
+                            preySignal = Math.max(preySignal, preyValue * (1 - dist / sensor.range));
+                        }
+                    }
+                }
+
+                // Detect corpses
+                if (target === 'dead' || target === 'both') {
+                    for (const corpse of state.corpses) {
+                        if (corpse.energy <= 0) continue;
+                        const dist = distance(agent.position, corpse.position);
+                        if (dist <= sensor.range) {
+                            const corpseValue = Math.min(1, corpse.energy / 50);
+                            preySignal = Math.max(preySignal, corpseValue * (1 - dist / sensor.range));
+                        }
+                    }
+                }
+
+                sensor.current_value = preySignal;
                 break;
         }
 

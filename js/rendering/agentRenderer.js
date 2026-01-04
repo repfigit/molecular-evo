@@ -42,6 +42,12 @@ export function renderAgent(ctx, agent) {
         renderInfectionIndicator(ctx, agent);
     }
 
+    // Draw carnivore indicator for predatory agents
+    const carnivory = agent.genome.metabolism.carnivory || 0;
+    if (carnivory >= 0.5) {
+        renderCarnivoreIndicator(ctx, agent, carnivory);
+    }
+
     // Draw energy bar if selected or always show option
     if (state.showEnergyBars || state.selectedEntity === agent) {
         renderEnergyBar(ctx, agent);
@@ -164,6 +170,7 @@ function getSensorColor(type) {
         case 'kin': return '#00ff00';
         case 'viral': return '#ff0000';
         case 'signal': return '#ffff00';
+        case 'prey': return '#ff4400';  // Orange-red for prey detection
         default: return '#ffffff';
     }
 }
@@ -202,6 +209,40 @@ function renderInfectionIndicator(ctx, agent) {
     }
 
     ctx.globalAlpha = 1.0;
+}
+
+/**
+ * Render carnivore indicator for predatory agents
+ */
+function renderCarnivoreIndicator(ctx, agent, carnivory) {
+    const x = agent.position.x;
+    const y = agent.position.y;
+
+    // Red "fangs" or spikes around the agent
+    const intensity = (carnivory - 0.5) * 2;  // 0-1 scale for 0.5-1.0 carnivory
+    ctx.strokeStyle = `rgba(255, 50, 50, ${0.3 + intensity * 0.5})`;
+    ctx.fillStyle = `rgba(255, 0, 0, ${0.2 + intensity * 0.3})`;
+    ctx.lineWidth = 1;
+
+    // Draw small triangular "fangs" pointing outward
+    const numFangs = 3;
+    const fangSize = 4 + intensity * 4;
+
+    for (let i = 0; i < numFangs; i++) {
+        const angle = (Math.PI * 2 / numFangs) * i + state.tick * 0.02;
+        const baseX = x + Math.cos(angle) * 12;
+        const baseY = y + Math.sin(angle) * 12;
+        const tipX = x + Math.cos(angle) * (12 + fangSize);
+        const tipY = y + Math.sin(angle) * (12 + fangSize);
+
+        ctx.beginPath();
+        ctx.moveTo(baseX - Math.sin(angle) * 2, baseY + Math.cos(angle) * 2);
+        ctx.lineTo(tipX, tipY);
+        ctx.lineTo(baseX + Math.sin(angle) * 2, baseY - Math.cos(angle) * 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+    }
 }
 
 /**

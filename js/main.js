@@ -8,15 +8,15 @@ import { state, resetState, updateStats, recordHistory, ageVisualEvents } from '
 import { SpatialHash } from './utils/spatial.js';
 
 // Core modules
-import { generateRandomGenome } from './core/genome.js';
-import { createAgent, updateAgentCenter, getAgentRadius } from './core/agent.js';
+import { generateRandomGenome, calculateDisplayCost, calculateGRNExpression, applyGRNModulation } from './core/genome.js';
+import { createAgent, updateAgentCenter, getAgentRadius, updatePlasticity, resetBonuses, updateLearning, rememberFood, rememberDanger } from './core/agent.js';
 import { initializePopulation, getPopulationStats } from './core/population.js';
 import { updateSpeciesTracking, getSpeciesColor } from './core/species.js';
 
 // Systems
 import { initPhysics, updatePhysics, updateSensors } from './systems/physics.js';
 import { initEnvironment, updateEnvironment, processFeeding } from './systems/environment.js';
-import { processEvolution, calculateFitness } from './systems/evolution.js';
+import { processEvolution, calculateFitness, getDensityEffects } from './systems/evolution.js';
 import { processCompetition } from './systems/competition.js';
 import { processCooperation } from './systems/cooperation.js';
 import { processSymbiosis } from './systems/symbiosis.js';
@@ -25,6 +25,8 @@ import { processViral, initViruses } from './systems/viral.js';
 import { processImmunity } from './systems/immunity.js';
 import { processEvents, getActiveEvents, triggerEvent, EVENT_TYPES, triggerCatastrophe } from './systems/events.js';
 import { initFood, updateFood } from './systems/food.js';
+import { processPredation } from './systems/predation.js';
+import { processCorpses } from './systems/corpse.js';
 
 // Rendering
 import { createRenderer } from './rendering/renderer.js';
@@ -250,14 +252,34 @@ class Simulation {
         // Process feeding for all agents
         for (const agent of state.agents) {
             if (agent.alive) {
+                // Reset temporary bonuses each tick
+                resetBonuses(agent);
+
+                // Update phenotypic plasticity (temperature acclimation, metabolic adjustment)
+                const envTemp = state.environment ? state.environment.temperature : 0.5;
+                updatePlasticity(agent, envTemp, dt);
+
+                // Update behavioral learning (memory decay, learning costs)
+                updateLearning(agent, dt, state.tick);
+
+                // Update Gene Regulatory Network expression
+                // GRN modulates effective trait values based on environment
+                const popDensity = state.agents.filter(a => a.alive).length / CONFIG.TARGET_POPULATION;
+                const grnExpression = calculateGRNExpression(agent, state.environment, popDensity);
+                applyGRNModulation(agent, grnExpression);
+
                 processFeeding(agent, dt);
 
                 // Age agents
                 agent.age++;
 
-                // Apply base metabolism cost, increased by temperature stress
-                let metabolismCost = CONFIG.BASE_METABOLISM_COST * dt;
-                
+                // Apply base metabolism cost, increased by temperature and density stress
+                // Also modified by metabolic plasticity (upregulation/downregulation)
+                // And by Gene Regulatory Network metabolism module expression
+                const plasticityMod = agent.plasticity ? agent.plasticity.metabolic_upregulation : 1.0;
+                const grnMetaMod = agent.grn_metabolism_modifier || 1.0;
+                let metabolismCost = CONFIG.BASE_METABOLISM_COST * plasticityMod * grnMetaMod * dt;
+
                 // Temperature affects metabolism - extreme temps cost more energy
                 if (state.environment) {
                     const optimalTemp = 0.5;
@@ -265,8 +287,18 @@ class Simulation {
                     const tempStressFactor = 1 + (tempDiff * 2); // Up to 3x cost at extreme temps
                     metabolismCost *= tempStressFactor;
                 }
-                
+
+                // Density-dependent metabolism (scramble competition)
+                // At high population density, metabolism costs increase
+                const densityEffects = getDensityEffects();
+                metabolismCost *= densityEffects.metabolismMultiplier;
+
                 agent.energy -= metabolismCost;
+
+                // SEXUAL SELECTION: Costly signaling (Zahavian handicap principle)
+                // Display costs drain energy, especially for low-quality individuals
+                const displayCost = calculateDisplayCost(agent, dt);
+                agent.energy -= displayCost;
 
                 // Update fitness periodically
                 if (state.tick % 100 === 0) {
@@ -290,6 +322,12 @@ class Simulation {
         }
         if (CONFIG.ENABLE_SYMBIOSIS) {
             processSymbiosis(state.agents, this.spatialHash, dt);
+        }
+
+        // Process predation and scavenging (if enabled)
+        if (CONFIG.ENABLE_PREDATION) {
+            processPredation(state.agents, this.spatialHash, dt);
+            processCorpses(state.agents, this.spatialHash, dt);
         }
 
         // Process HGT (if enabled)
@@ -594,7 +632,8 @@ class Simulation {
             { id: 'toggle-symbiosis', config: 'ENABLE_SYMBIOSIS' },
             { id: 'toggle-immunity', config: 'ENABLE_IMMUNITY' },
             { id: 'toggle-catastrophes', config: 'ENABLE_CATASTROPHES' },
-            { id: 'toggle-mutations', config: 'ENABLE_MUTATIONS' }
+            { id: 'toggle-mutations', config: 'ENABLE_MUTATIONS' },
+            { id: 'toggle-predation', config: 'ENABLE_PREDATION' }
         ];
 
         for (const toggle of toggles) {

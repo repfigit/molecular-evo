@@ -23,10 +23,11 @@ export class Renderer {
             'environment',  // Background, resources, temperature
             'grid',         // Spatial hash grid (debug)
             'food',         // Food particles
+            'corpses',      // Dead agent bodies
             'dna',          // DNA fragments
             'agents',       // Agents/organisms
             'viruses',      // Viral particles
-            'effects',      // HGT transfers, infections
+            'effects',      // HGT transfers, infections, predation
             'cooperative',  // Cooperative links
             'symbiotic',    // Symbiotic bonds
             'ui'            // Selection, tooltips
@@ -37,6 +38,7 @@ export class Renderer {
             environment: true,
             grid: false,
             food: true,
+            corpses: true,
             dna: true,
             agents: true,
             viruses: true,
@@ -114,6 +116,10 @@ export class Renderer {
 
             case 'food':
                 this.renderFood(ctx);
+                break;
+
+            case 'corpses':
+                this.renderCorpses(ctx);
                 break;
 
             case 'dna':
@@ -210,6 +216,53 @@ export class Renderer {
             ctx.arc(food.position.x, food.position.y, CONFIG.FOOD_RADIUS, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
+        }
+    }
+
+    /**
+     * Render corpses (dead agent bodies)
+     */
+    renderCorpses(ctx) {
+        if (!state.corpses || state.corpses.length === 0) return;
+
+        for (const corpse of state.corpses) {
+            if (corpse.energy <= 0) continue;
+
+            // Calculate fade based on age and energy
+            const ageFade = 1 - (corpse.age / CONFIG.CORPSE_MAX_AGE);
+            const energyFade = corpse.energy / corpse.originalEnergy;
+            const alpha = Math.max(0.2, Math.min(1, ageFade * energyFade));
+
+            // Size based on original agent size
+            const baseRadius = 3 + corpse.size * 1.5;
+
+            // Draw corpse as a gray, fading shape
+            ctx.globalAlpha = alpha;
+
+            // Outer body (dark gray)
+            ctx.fillStyle = '#555555';
+            ctx.beginPath();
+            ctx.arc(corpse.position.x, corpse.position.y, baseRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Inner detail (darker)
+            ctx.fillStyle = '#333333';
+            ctx.beginPath();
+            ctx.arc(corpse.position.x, corpse.position.y, baseRadius * 0.6, 0, Math.PI * 2);
+            ctx.fill();
+
+            // "X" marks to indicate death
+            ctx.strokeStyle = '#222222';
+            ctx.lineWidth = 1;
+            const xSize = baseRadius * 0.4;
+            ctx.beginPath();
+            ctx.moveTo(corpse.position.x - xSize, corpse.position.y - xSize);
+            ctx.lineTo(corpse.position.x + xSize, corpse.position.y + xSize);
+            ctx.moveTo(corpse.position.x + xSize, corpse.position.y - xSize);
+            ctx.lineTo(corpse.position.x - xSize, corpse.position.y + xSize);
+            ctx.stroke();
+
+            ctx.globalAlpha = 1.0;
         }
     }
 
@@ -336,6 +389,46 @@ export class Renderer {
                 ctx.fillStyle = `rgba(100, 255, 100, ${alpha})`;
                 ctx.beginPath();
                 ctx.arc(event.position.x, event.position.y, 8 * alpha, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+
+            case 'predation_success':
+                // Red burst for successful kill
+                ctx.strokeStyle = `rgba(255, 50, 50, ${alpha})`;
+                ctx.fillStyle = `rgba(200, 0, 0, ${alpha * 0.5})`;
+                ctx.lineWidth = 3;
+                const killRadius = 15 + 10 * (event.age / event.duration);
+                ctx.beginPath();
+                ctx.arc(event.position.x, event.position.y, killRadius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                // Blood splatter effect
+                for (let i = 0; i < 6; i++) {
+                    const angle = (Math.PI / 3) * i;
+                    const splatX = event.position.x + Math.cos(angle) * killRadius * 1.2;
+                    const splatY = event.position.y + Math.sin(angle) * killRadius * 1.2;
+                    ctx.beginPath();
+                    ctx.arc(splatX, splatY, 3 * alpha, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                break;
+
+            case 'predation_fail':
+                // Yellow flash for failed attack
+                ctx.strokeStyle = `rgba(255, 200, 0, ${alpha})`;
+                ctx.lineWidth = 2;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.arc(event.position.x, event.position.y, 12, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                break;
+
+            case 'scavenge':
+                // Green glow for scavenging
+                ctx.fillStyle = `rgba(100, 200, 100, ${alpha * 0.6})`;
+                ctx.beginPath();
+                ctx.arc(event.position.x, event.position.y, 8, 0, Math.PI * 2);
                 ctx.fill();
                 break;
         }

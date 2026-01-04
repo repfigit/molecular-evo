@@ -12,6 +12,11 @@ import { CONFIG } from '../config.js';
 import { state } from '../state.js';
 import { clamp, lerp } from '../utils/math.js';
 
+// === ENVIRONMENTAL HETEROGENEITY ===
+// Persistent spatial zones with different selection regimes
+// Enables local adaptation and divergent selection
+let environmentalZones = [];
+
 /**
  * Create a new environment
  */
@@ -67,7 +72,870 @@ function calculateLightLevel(x, y, cols, rows) {
  */
 export function initEnvironment() {
     state.environment = createEnvironment();
+    initEnvironmentalZones();
+    initGeographicBarriers();  // Initialize allopatric barriers
     return state.environment;
+}
+
+// === ENVIRONMENTAL ZONE SYSTEM ===
+// Creates persistent spatial heterogeneity for local adaptation
+
+/**
+ * Initialize environmental zones with different selection regimes
+ * Each zone has different optimal phenotypes, driving divergent selection
+ */
+export function initEnvironmentalZones() {
+    environmentalZones = [];
+
+    // Create 4-6 distinct zones with different selection regimes
+    const zoneCount = 4 + Math.floor(Math.random() * 3);
+    const resourceTypes = ['chemical_A', 'chemical_B', 'light', 'organic_matter'];
+
+    for (let i = 0; i < zoneCount; i++) {
+        // Position zones somewhat evenly distributed
+        const angle = (i / zoneCount) * Math.PI * 2 + Math.random() * 0.5;
+        const dist = 0.25 + Math.random() * 0.2;  // 25-45% from center
+        const centerX = CONFIG.WORLD_WIDTH * 0.5 + Math.cos(angle) * CONFIG.WORLD_WIDTH * dist;
+        const centerY = CONFIG.WORLD_HEIGHT * 0.5 + Math.sin(angle) * CONFIG.WORLD_HEIGHT * dist;
+
+        environmentalZones.push({
+            id: i,
+            name: `Zone_${String.fromCharCode(65 + i)}`,  // Zone_A, Zone_B, etc.
+
+            // Spatial extent
+            centerX: clamp(centerX, 100, CONFIG.WORLD_WIDTH - 100),
+            centerY: clamp(centerY, 100, CONFIG.WORLD_HEIGHT - 100),
+            radius: 80 + Math.random() * 120,  // 80-200 radius
+
+            // SELECTION REGIME - different optima in each zone
+            temperatureOptimum: 0.25 + (i / zoneCount) * 0.5,  // Gradient from cold to hot
+            dominantResource: resourceTypes[i % resourceTypes.length],
+            predationRisk: Math.random(),  // 0-1, how dangerous the zone is
+
+            // Zone characteristics affecting fitness
+            resourceMultiplier: 0.6 + Math.random() * 0.8,  // 0.6-1.4
+            viscosityModifier: 0.8 + Math.random() * 0.4,   // 0.8-1.2
+            toxicityLevel: Math.random() * 0.3,             // 0-0.3 background toxicity
+
+            // Zone stability (how predictable the zone is)
+            stability: 0.5 + Math.random() * 0.5,  // 0.5-1.0
+
+            // === ECOLOGICAL SUCCESSION STATE ===
+            // Tracks time since disturbance and community development
+            succession: {
+                stage: 0,                          // 0 = pioneer, 1 = climax
+                time_since_disturbance: 0,         // Ticks since last major disturbance
+                climax_time: 2000 + Math.random() * 2000,  // Ticks to reach climax
+                disturbance_history: [],           // Recent disturbance events
+                current_density: 0,                // Organism density affects succession
+                pioneer_threshold: 0.3,            // Stage < this = early succession
+                climax_threshold: 0.7              // Stage > this = climax community
+            }
+        });
+    }
+
+    // Store in state for access by other systems
+    if (state.environment) {
+        state.environment.zones = environmentalZones;
+    }
+}
+
+/**
+ * Get the zone at a given position
+ * Returns the zone with highest influence, or null if outside all zones
+ */
+export function getZoneAt(x, y) {
+    let bestZone = null;
+    let bestInfluence = 0;
+
+    for (const zone of environmentalZones) {
+        const dx = x - zone.centerX;
+        const dy = y - zone.centerY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < zone.radius) {
+            // Influence is stronger toward center
+            const influence = 1 - (dist / zone.radius);
+            if (influence > bestInfluence) {
+                bestInfluence = influence;
+                bestZone = zone;
+            }
+        }
+    }
+
+    return { zone: bestZone, influence: bestInfluence };
+}
+
+/**
+ * Calculate local adaptation fitness bonus for an agent
+ * Agents whose phenotype matches local optimum get fitness advantage
+ */
+export function getLocalAdaptationBonus(agent) {
+    const { zone, influence } = getZoneAt(agent.position.x, agent.position.y);
+    if (!zone || influence < 0.1) return 0;
+
+    let bonus = 0;
+    const metabolism = agent.genome.metabolism;
+
+    // 1. TEMPERATURE ADAPTATION
+    // Calculate how well agent's phenotype matches zone temperature
+    // Use plasticity acclimation as proxy for temperature preference
+    const agentTempPref = agent.plasticity?.acclimated_temperature ?? 0.5;
+    const tempMatch = 1 - Math.abs(agentTempPref - zone.temperatureOptimum);
+    bonus += tempMatch * 0.3 * influence;
+
+    // 2. RESOURCE SPECIALIZATION
+    // Agents that feed on the dominant resource get bonus
+    if (metabolism.primary_food === zone.dominantResource) {
+        bonus += 0.4 * influence;  // Large bonus for matching primary food
+    } else if (metabolism.secondary_food === zone.dominantResource) {
+        bonus += 0.15 * influence;  // Smaller bonus for secondary
+    }
+
+    // 3. PREDATION ADAPTATION
+    // High-predation zones favor defense traits (aggression, size, speed)
+    // Low-predation zones favor energy efficiency
+    const agentDefense = (agent.genome.social.competition.aggression +
+                          agent.genome.nodes.length / 10) / 2;
+
+    if (zone.predationRisk > 0.5) {
+        // High predation - defense is adaptive
+        if (agentDefense > 0.4) {
+            bonus += (agentDefense - 0.4) * 0.3 * influence;
+        }
+    } else {
+        // Low predation - efficiency is adaptive
+        if (agentDefense < 0.3) {
+            bonus += (0.3 - agentDefense) * 0.2 * influence;
+        }
+    }
+
+    // 4. TOXICITY RESISTANCE
+    // Agents in toxic zones need resistance
+    if (zone.toxicityLevel > 0.1) {
+        const resistance = agent.genome.viral?.resistance ?? 0.3;
+        bonus += resistance * zone.toxicityLevel * influence;
+    }
+
+    return bonus;
+}
+
+/**
+ * Get zone-specific resource modifier
+ * Dominant resources are more abundant in their zone
+ */
+export function getZoneResourceModifier(x, y, resourceType) {
+    const { zone, influence } = getZoneAt(x, y);
+    if (!zone || influence < 0.1) return 1.0;
+
+    // Dominant resource is more abundant
+    if (resourceType === zone.dominantResource) {
+        return 1 + (zone.resourceMultiplier - 1) * influence;
+    }
+
+    // Non-dominant resources are somewhat rarer
+    return 1 - (0.2 * influence);
+}
+
+/**
+ * Get zone-specific metabolism cost modifier
+ * Based on temperature mismatch and toxicity
+ */
+export function getZoneMetabolismModifier(agent) {
+    const { zone, influence } = getZoneAt(agent.position.x, agent.position.y);
+    if (!zone || influence < 0.1) return 1.0;
+
+    let modifier = 1.0;
+
+    // Temperature mismatch increases metabolism cost
+    const agentTempPref = agent.plasticity?.acclimated_temperature ?? 0.5;
+    const tempMismatch = Math.abs(agentTempPref - zone.temperatureOptimum);
+    modifier += tempMismatch * 0.5 * influence;
+
+    // Toxicity increases metabolism (detoxification cost)
+    modifier += zone.toxicityLevel * influence;
+
+    // Viscosity affects movement costs
+    modifier *= zone.viscosityModifier;
+
+    return modifier;
+}
+
+/**
+ * Get summary of agent distribution across zones
+ */
+export function getZonePopulationStats() {
+    const living = state.agents.filter(a => a.alive);
+    const zonePopulations = new Map();
+
+    // Initialize counts
+    for (const zone of environmentalZones) {
+        zonePopulations.set(zone.id, {
+            count: 0,
+            avgFitness: 0,
+            dominantResource: zone.dominantResource,
+            temperatureOptimum: zone.temperatureOptimum
+        });
+    }
+    zonePopulations.set('outside', { count: 0, avgFitness: 0 });
+
+    // Count agents per zone
+    for (const agent of living) {
+        const { zone } = getZoneAt(agent.position.x, agent.position.y);
+        const zoneId = zone ? zone.id : 'outside';
+        const pop = zonePopulations.get(zoneId);
+        pop.count++;
+        pop.avgFitness += agent.energy;  // Proxy for fitness
+    }
+
+    // Calculate averages
+    for (const [id, pop] of zonePopulations.entries()) {
+        if (pop.count > 0) {
+            pop.avgFitness /= pop.count;
+        }
+    }
+
+    return zonePopulations;
+}
+
+// === ECOLOGICAL SUCCESSION SYSTEM ===
+// Simulates community development from pioneer to climax stages
+// Creates temporal niche partitioning between r- and K-strategists
+
+/**
+ * Update succession state for all zones
+ * Called periodically from main update loop
+ */
+export function updateSuccession(agents, dt) {
+    // Get population per zone for density-dependent effects
+    const zonePops = getZonePopulationStats();
+
+    for (const zone of environmentalZones) {
+        if (!zone.succession) continue;
+
+        const succession = zone.succession;
+        const pop = zonePops.get(zone.id);
+        succession.current_density = pop ? pop.count : 0;
+
+        // Time advances succession toward climax
+        succession.time_since_disturbance += dt;
+
+        // Calculate succession stage (0 = pioneer, 1 = climax)
+        const rawStage = succession.time_since_disturbance / succession.climax_time;
+
+        // Density accelerates succession (organisms create conditions for successors)
+        const densityFactor = 1 + Math.min(succession.current_density / 20, 0.5);
+        succession.stage = clamp(rawStage * densityFactor, 0, 1);
+    }
+}
+
+/**
+ * Trigger a disturbance event in a zone
+ * Resets succession to pioneer stage
+ */
+export function triggerDisturbance(zoneId, severity = 1.0) {
+    const zone = environmentalZones.find(z => z.id === zoneId);
+    if (!zone || !zone.succession) return;
+
+    const succession = zone.succession;
+
+    // Reset succession based on severity (1.0 = complete reset)
+    succession.time_since_disturbance *= (1 - severity);
+    succession.stage *= (1 - severity * 0.8);
+
+    // Record disturbance
+    succession.disturbance_history.push({
+        tick: state.tick,
+        severity
+    });
+
+    // Trim history
+    while (succession.disturbance_history.length > 10) {
+        succession.disturbance_history.shift();
+    }
+
+    // Disturbance can kill some organisms in the zone (handled elsewhere)
+}
+
+/**
+ * Get succession-based selection modifier
+ * Early succession favors r-strategists; climax favors K-strategists
+ */
+export function getSuccessionSelectionModifier(agent) {
+    const { zone, influence } = getZoneAt(agent.position.x, agent.position.y);
+    if (!zone?.succession || influence < 0.1) return 1.0;
+
+    const succession = zone.succession;
+    const lifeHistory = agent.genome.metabolism.life_history || {};
+
+    let modifier = 1.0;
+
+    // === EARLY SUCCESSION (Pioneer Phase) ===
+    if (succession.stage < succession.pioneer_threshold) {
+        // Favor r-strategists: high clutch size, fast maturation, exploration
+        const pioneerTraits = {
+            clutch_size: (lifeHistory.clutch_size || 2) / 6,  // Normalize to 0-1
+            maturation_speed: 1 - (lifeHistory.maturation_age || 100) / 300,
+            exploration: agent.genome.social?.learning?.exploration_drive || 0.5,
+            dispersal: 1 - (agent.genome.social?.cooperation_willingness || 0.5)
+        };
+
+        const pioneerScore = (
+            pioneerTraits.clutch_size * 0.3 +
+            pioneerTraits.maturation_speed * 0.3 +
+            pioneerTraits.exploration * 0.2 +
+            pioneerTraits.dispersal * 0.2
+        );
+
+        // Early succession bonus for pioneer traits
+        modifier += pioneerScore * 0.3 * influence * (1 - succession.stage / succession.pioneer_threshold);
+    }
+
+    // === CLIMAX STAGE (K-selected Community) ===
+    if (succession.stage > succession.climax_threshold) {
+        // Favor K-strategists: high investment, efficiency, competitive ability
+        const climaxTraits = {
+            offspring_investment: lifeHistory.offspring_investment || 0.4,
+            efficiency: agent.genome.metabolism.efficiency || 0.5,
+            competitive_ability: agent.genome.social?.competition?.aggression || 0.3,
+            cooperation: agent.genome.social?.cooperation_willingness || 0.5
+        };
+
+        const climaxScore = (
+            climaxTraits.offspring_investment * 0.3 +
+            climaxTraits.efficiency * 0.25 +
+            climaxTraits.competitive_ability * 0.25 +
+            climaxTraits.cooperation * 0.2
+        );
+
+        // Climax bonus for K-selected traits
+        const climaxProgress = (succession.stage - succession.climax_threshold) / (1 - succession.climax_threshold);
+        modifier += climaxScore * 0.3 * influence * climaxProgress;
+    }
+
+    // === INTERMEDIATE SUCCESSION ===
+    // Both strategies viable, generalists may have slight advantage
+    if (succession.stage >= succession.pioneer_threshold && succession.stage <= succession.climax_threshold) {
+        // Moderate bonus for balanced phenotypes
+        const rValue = (lifeHistory.clutch_size || 2) / 6;
+        const kValue = lifeHistory.offspring_investment || 0.4;
+        const balance = 1 - Math.abs(rValue - kValue);
+        modifier += balance * 0.1 * influence;
+    }
+
+    return modifier;
+}
+
+/**
+ * Check if zone should experience natural disturbance
+ * Called periodically to simulate fires, floods, disease outbreaks
+ */
+export function checkNaturalDisturbances(dt) {
+    const disturbanceRate = 0.0001 * dt;  // Low baseline rate
+
+    for (const zone of environmentalZones) {
+        if (!zone.succession) continue;
+
+        // Climax communities are more stable but not immune
+        const stability = zone.stability;
+        const climaxResistance = zone.succession.stage * 0.5;
+        const effectiveRate = disturbanceRate * (1 - stability * 0.5) * (1 - climaxResistance);
+
+        if (Math.random() < effectiveRate) {
+            // Natural disturbance event
+            const severity = 0.3 + Math.random() * 0.5;  // 0.3-0.8 severity
+            triggerDisturbance(zone.id, severity);
+
+            // Could trigger catastrophe in state for agents
+            state.visualEvents?.push({
+                type: 'disturbance',
+                position: { x: zone.centerX, y: zone.centerY },
+                radius: zone.radius,
+                severity,
+                age: 0,
+                duration: 50
+            });
+        }
+    }
+}
+
+/**
+ * Get succession statistics for all zones
+ */
+export function getSuccessionStats() {
+    const stats = [];
+
+    for (const zone of environmentalZones) {
+        if (!zone.succession) continue;
+
+        const succession = zone.succession;
+        let stageLabel;
+
+        if (succession.stage < succession.pioneer_threshold) {
+            stageLabel = 'pioneer';
+        } else if (succession.stage > succession.climax_threshold) {
+            stageLabel = 'climax';
+        } else {
+            stageLabel = 'mid-succession';
+        }
+
+        stats.push({
+            zoneId: zone.id,
+            zoneName: zone.name,
+            stage: succession.stage,
+            stageLabel,
+            timeSinceDisturbance: succession.time_since_disturbance,
+            density: succession.current_density,
+            recentDisturbances: succession.disturbance_history.length
+        });
+    }
+
+    return stats;
+}
+
+/**
+ * Get colonization-competition trade-off modifier
+ * Good colonizers are poor competitors and vice versa
+ */
+export function getColonizationCompetitionTradeoff(agent, zone) {
+    if (!zone?.succession) return { colonization: 0.5, competition: 0.5 };
+
+    const lifeHistory = agent.genome.metabolism.life_history || {};
+
+    // r-selected traits = good colonizer
+    const colonizationAbility = (
+        (lifeHistory.clutch_size || 2) / 6 * 0.4 +
+        (1 - (lifeHistory.maturation_age || 100) / 300) * 0.3 +
+        (agent.genome.social?.learning?.exploration_drive || 0.5) * 0.3
+    );
+
+    // K-selected traits = good competitor
+    const competitiveAbility = (
+        (lifeHistory.offspring_investment || 0.4) * 0.3 +
+        (agent.genome.metabolism.efficiency || 0.5) * 0.3 +
+        (agent.genome.social?.competition?.aggression || 0.3) * 0.2 +
+        (agent.genome.nodes?.length || 5) / CONFIG.MAX_NODES * 0.2
+    );
+
+    // Trade-off: sum should be roughly constant
+    // Agents can't be both excellent colonizers AND competitors
+    const total = colonizationAbility + competitiveAbility;
+    const normalizedColonization = colonizationAbility / total;
+    const normalizedCompetition = competitiveAbility / total;
+
+    return {
+        colonization: normalizedColonization,
+        competition: normalizedCompetition,
+        isColonizer: normalizedColonization > 0.55,
+        isCompetitor: normalizedCompetition > 0.55,
+        isGeneralist: Math.abs(normalizedColonization - 0.5) < 0.1
+    };
+}
+
+/**
+ * Get all environmental zones
+ */
+export function getEnvironmentalZones() {
+    return environmentalZones;
+}
+
+// ============================================================
+// ALLOPATRIC SPECIATION: GEOGRAPHICAL BARRIERS
+// ============================================================
+// Physical barriers that prevent gene flow between populations
+// Enables divergent evolution and eventual speciation
+// Barriers can form, persist, and break down over geological time
+
+let geographicBarriers = [];
+
+/**
+ * Initialize geographical barriers for allopatric speciation
+ * Creates impassable zones that divide the world into isolated regions
+ */
+export function initGeographicBarriers() {
+    geographicBarriers = [];
+
+    // Create 1-3 major barriers
+    const barrierCount = 1 + Math.floor(Math.random() * 3);
+
+    for (let i = 0; i < barrierCount; i++) {
+        const barrier = createBarrier(i);
+        if (barrier) {
+            geographicBarriers.push(barrier);
+        }
+    }
+
+    // Store in state for persistence
+    if (state.environment) {
+        state.environment.barriers = geographicBarriers;
+    }
+
+    return geographicBarriers;
+}
+
+/**
+ * Create a single geographical barrier
+ * Barriers can be rivers, mountain ranges, deserts, or ocean channels
+ */
+function createBarrier(id) {
+    const barrierTypes = ['mountain', 'river', 'desert', 'ocean'];
+    const type = barrierTypes[id % barrierTypes.length];
+
+    // Determine orientation and position
+    const isVertical = Math.random() > 0.5;
+    const position = 0.25 + Math.random() * 0.5;  // 25-75% across the world
+
+    let startX, startY, endX, endY, width;
+
+    if (isVertical) {
+        startX = CONFIG.WORLD_WIDTH * position;
+        startY = CONFIG.WORLD_HEIGHT * 0.05;
+        endX = startX + (Math.random() - 0.5) * CONFIG.WORLD_WIDTH * 0.2;  // Slight curve
+        endY = CONFIG.WORLD_HEIGHT * 0.95;
+        width = 30 + Math.random() * 40;  // 30-70 pixels wide
+    } else {
+        startX = CONFIG.WORLD_WIDTH * 0.05;
+        startY = CONFIG.WORLD_HEIGHT * position;
+        endX = CONFIG.WORLD_WIDTH * 0.95;
+        endY = startY + (Math.random() - 0.5) * CONFIG.WORLD_HEIGHT * 0.2;
+        width = 30 + Math.random() * 40;
+    }
+
+    return {
+        id,
+        type,
+        isVertical,
+
+        // Barrier geometry (line segment with width)
+        startX,
+        startY,
+        endX,
+        endY,
+        width,
+
+        // Barrier properties
+        permeability: getBarrierPermeability(type),  // 0 = impassable, 1 = no effect
+        permanence: 0.95 + Math.random() * 0.05,     // How stable the barrier is
+
+        // Age and dynamics
+        formation_tick: state.tick || 0,
+        age: 0,
+        is_active: true,
+
+        // Gaps in the barrier (potential corridors)
+        gaps: [],
+
+        // Population isolation tracking
+        populations: {
+            side_A: { count: 0, avg_marker: 0 },
+            side_B: { count: 0, avg_marker: 0 }
+        },
+
+        // Genetic divergence tracking
+        fst_history: [],  // Track Fst (genetic differentiation) over time
+        last_gene_flow: 0
+    };
+}
+
+/**
+ * Get baseline permeability for barrier type
+ */
+function getBarrierPermeability(type) {
+    switch (type) {
+        case 'ocean': return 0.0;      // Completely impassable
+        case 'mountain': return 0.05;  // Nearly impassable
+        case 'desert': return 0.15;    // Difficult but possible
+        case 'river': return 0.3;      // Significant obstacle
+        default: return 0.5;
+    }
+}
+
+/**
+ * Check if movement from point A to B crosses a barrier
+ * Returns barrier info if blocked, null if movement is allowed
+ */
+export function checkBarrierCrossing(x1, y1, x2, y2) {
+    for (const barrier of geographicBarriers) {
+        if (!barrier.is_active) continue;
+
+        const crossing = lineSegmentIntersectsBarrier(x1, y1, x2, y2, barrier);
+        if (crossing.intersects) {
+            // Check if movement is allowed (based on permeability)
+            if (Math.random() > barrier.permeability) {
+                return {
+                    blocked: true,
+                    barrier,
+                    intersection: crossing.point
+                };
+            }
+        }
+    }
+
+    return { blocked: false };
+}
+
+/**
+ * Check if a line segment intersects a barrier (treated as thick line)
+ */
+function lineSegmentIntersectsBarrier(x1, y1, x2, y2, barrier) {
+    // Barrier as a line segment
+    const bx1 = barrier.startX;
+    const by1 = barrier.startY;
+    const bx2 = barrier.endX;
+    const by2 = barrier.endY;
+
+    // Vector math for line-line intersection
+    const dx1 = x2 - x1;
+    const dy1 = y2 - y1;
+    const dx2 = bx2 - bx1;
+    const dy2 = by2 - by1;
+
+    const cross = dx1 * dy2 - dy1 * dx2;
+
+    // Parallel lines
+    if (Math.abs(cross) < 0.0001) {
+        // Check if close enough to barrier (within width)
+        const distToBarrier = pointToLineDistance(x1, y1, bx1, by1, bx2, by2);
+        return {
+            intersects: distToBarrier < barrier.width / 2,
+            point: null
+        };
+    }
+
+    const dx3 = bx1 - x1;
+    const dy3 = by1 - y1;
+
+    const t = (dx3 * dy2 - dy3 * dx2) / cross;
+    const u = (dx3 * dy1 - dy3 * dx1) / cross;
+
+    // Check if intersection is within both segments
+    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+        // Check if within barrier width
+        const intersectX = x1 + t * dx1;
+        const intersectY = y1 + t * dy1;
+
+        return {
+            intersects: true,
+            point: { x: intersectX, y: intersectY }
+        };
+    }
+
+    return { intersects: false, point: null };
+}
+
+/**
+ * Calculate distance from point to line segment
+ */
+function pointToLineDistance(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lengthSq = dx * dx + dy * dy;
+
+    if (lengthSq === 0) {
+        // Line segment is a point
+        return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+    }
+
+    // Project point onto line
+    let t = ((px - x1) * dx + (py - y1) * dy) / lengthSq;
+    t = Math.max(0, Math.min(1, t));
+
+    const projX = x1 + t * dx;
+    const projY = y1 + t * dy;
+
+    return Math.sqrt((px - projX) ** 2 + (py - projY) ** 2);
+}
+
+/**
+ * Determine which side of a barrier an agent is on
+ * Returns 'A', 'B', or null if not near barrier
+ */
+export function getBarrierSide(x, y, barrier) {
+    // Use cross product to determine side
+    const dx = barrier.endX - barrier.startX;
+    const dy = barrier.endY - barrier.startY;
+    const px = x - barrier.startX;
+    const py = y - barrier.startY;
+
+    const cross = dx * py - dy * px;
+
+    return cross > 0 ? 'A' : 'B';
+}
+
+/**
+ * Update barrier dynamics over time
+ * Barriers can weaken, form gaps, or break down
+ */
+export function updateBarriers(dt) {
+    for (const barrier of geographicBarriers) {
+        if (!barrier.is_active) continue;
+
+        barrier.age += dt;
+
+        // Very rare barrier breakdown (geological time scale)
+        if (Math.random() < 0.00001 * dt) {
+            // Barrier begins to weaken
+            barrier.permeability = Math.min(1, barrier.permeability + 0.1);
+
+            // If permeability reaches 1, barrier is effectively gone
+            if (barrier.permeability >= 1) {
+                barrier.is_active = false;
+            }
+        }
+
+        // Rare gap formation (corridor opens)
+        if (Math.random() < 0.00005 * dt && barrier.gaps.length < 3) {
+            // Random position along barrier
+            const gapPosition = Math.random();
+            barrier.gaps.push({
+                position: gapPosition,
+                width: 20 + Math.random() * 30,
+                formation_tick: state.tick
+            });
+
+            // Gaps increase effective permeability
+            barrier.permeability = Math.min(1, barrier.permeability + 0.1);
+        }
+    }
+}
+
+/**
+ * Track population isolation across barriers
+ * Calculates genetic differentiation (Fst) between isolated populations
+ */
+export function trackPopulationIsolation(agents) {
+    for (const barrier of geographicBarriers) {
+        if (!barrier.is_active) continue;
+
+        // Reset counts
+        barrier.populations.side_A = { count: 0, markers: [] };
+        barrier.populations.side_B = { count: 0, markers: [] };
+
+        // Count agents on each side
+        for (const agent of agents) {
+            if (!agent.alive) continue;
+
+            const side = getBarrierSide(agent.position.x, agent.position.y, barrier);
+            const pop = barrier.populations[`side_${side}`];
+            pop.count++;
+            pop.markers.push(agent.genome.species_marker);
+        }
+
+        // Calculate Fst (genetic differentiation)
+        const fst = calculateFst(
+            barrier.populations.side_A.markers,
+            barrier.populations.side_B.markers
+        );
+
+        // Track Fst history
+        if (barrier.fst_history.length > 100) {
+            barrier.fst_history.shift();
+        }
+        barrier.fst_history.push({
+            tick: state.tick,
+            fst,
+            pop_A: barrier.populations.side_A.count,
+            pop_B: barrier.populations.side_B.count
+        });
+    }
+}
+
+/**
+ * Calculate Fst (fixation index) between two populations
+ * Fst = (Ht - Hs) / Ht where Ht is total heterozygosity, Hs is within-subpop
+ * Higher Fst = more genetic differentiation = more speciation progress
+ */
+function calculateFst(markersA, markersB) {
+    if (markersA.length < 5 || markersB.length < 5) {
+        return 0;  // Need minimum sample size
+    }
+
+    // Calculate variance within each population
+    const meanA = markersA.reduce((a, b) => a + b, 0) / markersA.length;
+    const meanB = markersB.reduce((a, b) => a + b, 0) / markersB.length;
+
+    const varA = markersA.reduce((sum, m) => sum + (m - meanA) ** 2, 0) / markersA.length;
+    const varB = markersB.reduce((sum, m) => sum + (m - meanB) ** 2, 0) / markersB.length;
+
+    // Within-population heterozygosity
+    const Hs = (varA + varB) / 2;
+
+    // Total heterozygosity (combined population)
+    const allMarkers = [...markersA, ...markersB];
+    const meanTotal = allMarkers.reduce((a, b) => a + b, 0) / allMarkers.length;
+    const Ht = allMarkers.reduce((sum, m) => sum + (m - meanTotal) ** 2, 0) / allMarkers.length;
+
+    if (Ht === 0) return 0;
+
+    // Fst calculation
+    const fst = Math.max(0, (Ht - Hs) / Ht);
+
+    return Math.min(1, fst);  // Clamp to 0-1
+}
+
+/**
+ * Check if speciation has occurred across a barrier
+ * Speciation criteria: Fst > 0.25 for extended period
+ */
+export function checkAllopatricSpeciation(barrier) {
+    if (!barrier.is_active || barrier.fst_history.length < 50) {
+        return { speciated: false };
+    }
+
+    // Average recent Fst
+    const recentFst = barrier.fst_history.slice(-20);
+    const avgFst = recentFst.reduce((sum, entry) => sum + entry.fst, 0) / recentFst.length;
+
+    // Check for stable high differentiation
+    const allHighFst = recentFst.every(entry => entry.fst > 0.15);
+
+    if (avgFst > 0.25 && allHighFst) {
+        return {
+            speciated: true,
+            fst: avgFst,
+            pop_A_size: barrier.populations.side_A.count,
+            pop_B_size: barrier.populations.side_B.count
+        };
+    }
+
+    return {
+        speciated: false,
+        fst: avgFst,
+        diverging: avgFst > 0.1
+    };
+}
+
+/**
+ * Get barrier statistics for display/analysis
+ */
+export function getBarrierStats() {
+    return geographicBarriers.map(barrier => {
+        const speciationCheck = checkAllopatricSpeciation(barrier);
+        const recentFst = barrier.fst_history.length > 0
+            ? barrier.fst_history[barrier.fst_history.length - 1].fst
+            : 0;
+
+        return {
+            id: barrier.id,
+            type: barrier.type,
+            isActive: barrier.is_active,
+            permeability: barrier.permeability,
+            age: barrier.age,
+            gapCount: barrier.gaps.length,
+            populationA: barrier.populations.side_A.count,
+            populationB: barrier.populations.side_B.count,
+            currentFst: recentFst,
+            speciationStatus: speciationCheck.speciated ? 'speciated' :
+                             speciationCheck.diverging ? 'diverging' : 'mixing'
+        };
+    });
+}
+
+/**
+ * Get all geographic barriers
+ */
+export function getGeographicBarriers() {
+    return geographicBarriers;
 }
 
 /**
@@ -107,6 +975,14 @@ export function updateEnvironment(dt) {
 
     // Update current
     updateCurrent(env, dt);
+
+    // Update geographical barriers (allopatric speciation)
+    updateBarriers(dt);
+
+    // Periodically track population isolation across barriers
+    if (env.time % 100 === 0 && state.agents) {
+        trackPopulationIsolation(state.agents.filter(a => a.alive));
+    }
 }
 
 /**

@@ -86,6 +86,9 @@ function renderOverlay(ctx, environment) {
         case 'light':
             renderLightOverlay(ctx, environment);
             break;
+        case 'species':
+            renderSpeciesOverlay(ctx);
+            break;
         case 'viral':
             renderViralDensityOverlay(ctx);
             break;
@@ -296,6 +299,82 @@ function renderDNADensityOverlay(ctx) {
                 const intensity = Math.min(1, density[y][x] / 10);
                 ctx.fillStyle = `rgba(0, 255, 255, ${intensity})`;
                 ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+            }
+        }
+    }
+
+    ctx.globalAlpha = 1.0;
+}
+
+/**
+ * Render species distribution overlay
+ * Shows where different species are concentrated in the world
+ */
+function renderSpeciesOverlay(ctx) {
+    if (!state.agents || state.agents.length === 0) return;
+
+    const cellSize = 50;
+    const cols = Math.ceil(CONFIG.WORLD_WIDTH / cellSize);
+    const rows = Math.ceil(CONFIG.WORLD_HEIGHT / cellSize);
+
+    // Track species counts per cell: Map<cellKey, Map<speciesMarker, count>>
+    const cellSpecies = new Map();
+
+    for (const agent of state.agents) {
+        if (!agent.alive) continue;
+
+        const cx = Math.floor(agent.position.x / cellSize);
+        const cy = Math.floor(agent.position.y / cellSize);
+        if (cx < 0 || cx >= cols || cy < 0 || cy >= rows) continue;
+
+        const cellKey = `${cx},${cy}`;
+        if (!cellSpecies.has(cellKey)) {
+            cellSpecies.set(cellKey, new Map());
+        }
+
+        const speciesMap = cellSpecies.get(cellKey);
+        const marker = agent.genome?.species_marker || 'unknown';
+        speciesMap.set(marker, (speciesMap.get(marker) || 0) + 1);
+    }
+
+    // Render each cell with dominant species color
+    ctx.globalAlpha = 0.35;
+
+    for (const [cellKey, speciesMap] of cellSpecies) {
+        const [cx, cy] = cellKey.split(',').map(Number);
+
+        // Find dominant species in this cell
+        let dominantSpecies = null;
+        let maxCount = 0;
+        let totalCount = 0;
+
+        for (const [marker, count] of speciesMap) {
+            totalCount += count;
+            if (count > maxCount) {
+                maxCount = count;
+                dominantSpecies = marker;
+            }
+        }
+
+        if (dominantSpecies && totalCount > 0) {
+            // Get species color
+            const color = getSpeciesColorFast(dominantSpecies);
+            
+            // Intensity based on agent density in this cell
+            const intensity = Math.min(1, totalCount / 5);
+            
+            // Parse color and apply intensity
+            const rgb = hexToRgb(color);
+            ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${intensity})`;
+            ctx.fillRect(cx * cellSize, cy * cellSize, cellSize, cellSize);
+
+            // If multiple species present, add a pattern/border to indicate diversity
+            if (speciesMap.size > 1) {
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([3, 3]);
+                ctx.strokeRect(cx * cellSize + 2, cy * cellSize + 2, cellSize - 4, cellSize - 4);
+                ctx.setLineDash([]);
             }
         }
     }
