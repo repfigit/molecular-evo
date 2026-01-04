@@ -99,6 +99,16 @@ body {
     animation: turbo-pulse 0.5s ease-in-out infinite alternate;
 }
 
+#btn-toggle-panel {
+    font-size: 16px;
+    font-weight: bold;
+}
+
+#btn-toggle-panel.active {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+}
+
 @keyframes turbo-pulse {
     from { opacity: 0.8; }
     to { opacity: 1; }
@@ -189,6 +199,13 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+#ui-panel.hidden {
+    transform: translateX(100%);
+    opacity: 0;
+    pointer-events: none;
 }
 
 /* === Panel Components === */
@@ -880,4 +897,67 @@ kbd {
     color: var(--text-secondary);
     font-size: 11px;
     line-height: 1.4;
+}
+
+/* === Info Icon Tooltips === */
+.info-icon {
+    display: inline-block;
+    cursor: help;
+    font-size: 12px;
+    color: var(--accent-primary);
+    margin-left: 4px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+    position: relative;
+    vertical-align: middle;
+}
+
+.info-icon:hover {
+    opacity: 1;
+}
+
+.info-icon::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 50%;
+    bottom: 100%;
+    transform: translateX(-50%);
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    background: rgba(26, 26, 46, 0.98);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 11px;
+    line-height: 1.4;
+    white-space: normal;
+    width: 220px;
+    text-align: left;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s, visibility 0.2s;
+    pointer-events: none;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.info-icon::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 100%;
+    transform: translateX(-50%);
+    margin-bottom: 2px;
+    border: 6px solid transparent;
+    border-top-color: var(--panel-border);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s, visibility 0.2s;
+    z-index: 1000;
+}
+
+.info-icon:hover::after,
+.info-icon:hover::before {
+    opacity: 1;
+    visibility: visible;
 }

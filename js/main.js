@@ -409,6 +409,15 @@ class Simulation {
             }
         });
 
+        // Toggle panel button
+        const togglePanelBtn = document.getElementById('btn-toggle-panel');
+        const uiPanel = document.getElementById('ui-panel');
+        togglePanelBtn?.addEventListener('click', () => {
+            const isHidden = uiPanel.classList.toggle('hidden');
+            togglePanelBtn.classList.toggle('active', isHidden);
+            this.showToast(isHidden ? 'Panel hidden' : 'Panel visible');
+        });
+
         // Overlay select
         const overlaySelect = document.getElementById('overlay-select');
         overlaySelect?.addEventListener('change', (e) => {
@@ -777,6 +786,15 @@ class Simulation {
                         e.preventDefault();
                         this.reset();
                     }
+                    break;
+                case 'KeyH':
+                    // Toggle panel visibility
+                    e.preventDefault();
+                    const uiPanel = document.getElementById('ui-panel');
+                    const toggleBtn = document.getElementById('btn-toggle-panel');
+                    const isHidden = uiPanel.classList.toggle('hidden');
+                    toggleBtn?.classList.toggle('active', isHidden);
+                    this.showToast(isHidden ? 'Panel hidden (H to show)' : 'Panel visible');
                     break;
                 case 'KeyT':
                     // Toggle turbo mode
