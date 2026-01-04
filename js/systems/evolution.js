@@ -183,6 +183,7 @@ export function calculateFitness(agent) {
  * Rare species/strategies have a slight advantage
  */
 function calculateRarityBonus(agent) {
+    // Use cached alive agents from state if available
     const agents = state.agents.filter(a => a.alive);
     const totalAgents = agents.length;
     

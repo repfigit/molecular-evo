@@ -285,13 +285,15 @@ export function shouldDie(agent) {
     agent.energy -= sizePenalty * 0.01;
     
     // BIOLOGICAL REALISM: Old age increases mortality risk
-    // Agents have a maximum lifespan with probabilistic death
-    const maxAge = 5000;  // Maximum expected lifespan
-    if (agent.age > maxAge * 0.8) {  // After 80% of max lifespan
-        const ageFactor = (agent.age - maxAge * 0.8) / (maxAge * 0.2);
-        const deathProbability = ageFactor * 0.01;  // Up to 1% per tick
-        if (Math.random() < deathProbability) {
-            return true;
+    // Only check every 10 ticks to reduce computational overhead
+    if (agent.age % 10 === 0) {
+        const maxAge = 5000;  // Maximum expected lifespan
+        if (agent.age > maxAge * 0.8) {  // After 80% of max lifespan
+            const ageFactor = (agent.age - maxAge * 0.8) / (maxAge * 0.2);
+            const deathProbability = ageFactor * 0.01;  // Up to 1% per tick
+            if (Math.random() < deathProbability) {
+                return true;
+            }
         }
     }
     

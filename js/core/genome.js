@@ -450,9 +450,11 @@ function mutateNumericValues(genome) {
             node.mass = clamp(node.mass + massChange, 0.1, 5.0);
             
             // PLEIOTROPY: Mass changes affect friction (larger = more friction)
-            if (node.friction !== undefined) {
-                node.friction = clamp(node.friction + massChange * 0.5, 0.1, 0.9);
+            // Initialize friction if not present
+            if (node.friction === undefined) {
+                node.friction = randomRange(0.3, 0.7);
             }
+            node.friction = clamp(node.friction + massChange * 0.5, 0.1, 0.9);
         }
     }
 
@@ -519,7 +521,7 @@ function mutateNumericValues(genome) {
     // Most mutations are neutral or slightly deleterious
     if (randomBool(0.02)) {  // 2% chance of beneficial mutation
         // Boost a random trait
-        const beneficialType = randomInt(0, 2);
+        const beneficialType = randomInt(0, 2);  // 0, 1, or 2 (inclusive)
         switch (beneficialType) {
             case 0: // Metabolism boost
                 genome.metabolism.efficiency = clamp(
