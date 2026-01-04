@@ -254,7 +254,7 @@ body {
     border-left: 1px solid var(--panel-border);
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: visible;
     position: relative;
     transition: transform 0.3s ease;
     z-index: 100;
@@ -266,10 +266,10 @@ body {
 
 /* === Panel Toggle Button === */
 .panel-toggle {
-    position: fixed;
-    right: 320px;
+    position: absolute;
+    left: 0;
     top: 50%;
-    transform: translateY(-50%);
+    transform: translate(-100%, -50%);
     width: 24px;
     height: 80px;
     background: var(--bg-tertiary);
@@ -280,15 +280,9 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: right 0.3s ease, background 0.2s;
-    /* Higher z-index (1001) than UI panel (100) to ensure it's clickable above canvas */
+    transition: background 0.2s;
     z-index: 1001;
     pointer-events: auto;
-}
-
-/* When panel is hidden, move toggle to screen edge */
-body:has(#ui-panel.hidden) .panel-toggle {
-    right: 0;
 }
 
 .panel-toggle:hover {
@@ -303,7 +297,7 @@ body:has(#ui-panel.hidden) .panel-toggle {
 }
 
 /* Rotate icon when panel is hidden */
-body:has(#ui-panel.hidden) .toggle-icon {
+#ui-panel.hidden .toggle-icon {
     transform: rotate(180deg);
 }
 
@@ -311,54 +305,8 @@ body:has(#ui-panel.hidden) .toggle-icon {
     transform: scale(1.2);
 }
 
-body:has(#ui-panel.hidden) .panel-toggle:hover .toggle-icon {
+#ui-panel.hidden .panel-toggle:hover .toggle-icon {
     transform: rotate(180deg) scale(1.2);
-}
-
-/* === Panel Handle === */
-.panel-handle {
-    position: absolute;
-    left: -12px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 12px;
-    height: 80px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--panel-border);
-    border-right: none;
-    border-radius: 6px 0 0 6px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.2s, width 0.2s;
-    z-index: 1000;
-}
-
-.panel-handle:hover {
-    background: var(--accent-primary);
-    width: 16px;
-}
-
-.handle-grip {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    align-items: center;
-}
-
-.handle-grip::before,
-.handle-grip::after {
-    content: '';
-    width: 2px;
-    height: 20px;
-    background: var(--text-muted);
-    border-radius: 1px;
-}
-
-.panel-handle:hover .handle-grip::before,
-.panel-handle:hover .handle-grip::after {
-    background: var(--text-primary);
 }
 
 /* === Panel Components === */
@@ -925,6 +873,7 @@ kbd {
 .tab-content-container {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .tab-content {

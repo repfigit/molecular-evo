@@ -182,6 +182,11 @@ function initKeyboardShortcuts(simulation) {
                 state.camera.y = CONFIG.WORLD_HEIGHT / 2;
                 state.camera.zoom = 1.0;
                 break;
+
+            case 'KeyO':
+                // Cycle overlay mode
+                cycleOverlayMode();
+                break;
         }
     });
 }
@@ -211,6 +216,22 @@ function updateSpeedDisplay() {
 
     if (slider) slider.value = state.speed;
     if (value) value.textContent = state.speed + 'x';
+}
+
+/**
+ * Cycle through overlay modes
+ */
+function cycleOverlayMode() {
+    const modes = ['none', 'resources', 'temperature', 'species', 'viral', 'dna'];
+    const currentIndex = modes.indexOf(state.overlayMode);
+    const nextIndex = (currentIndex + 1) % modes.length;
+    state.overlayMode = modes[nextIndex];
+    
+    // Update the dropdown to match
+    const overlaySelect = document.getElementById('overlay-select');
+    if (overlaySelect) {
+        overlaySelect.value = state.overlayMode;
+    }
 }
 
 /**

@@ -808,6 +808,22 @@ class Simulation {
                     }
                     this.showToast(`Turbo mode ${this.turboMode ? 'ON' : 'OFF'}`);
                     break;
+                case 'KeyO':
+                    // Cycle overlay mode
+                    const modes = ['none', 'resources', 'temperature', 'species', 'viral', 'dna'];
+                    const currentIndex = modes.indexOf(state.overlayMode);
+                    const nextIndex = (currentIndex + 1) % modes.length;
+                    state.overlayMode = modes[nextIndex];
+                    const overlaySelect = document.getElementById('overlay-select');
+                    if (overlaySelect) {
+                        overlaySelect.value = state.overlayMode;
+                    }
+                    this.showToast(`Overlay: ${state.overlayMode}`);
+                    break;
+                case 'KeyC':
+                    // Toggle overlay controls collapse
+                    this.toggleOverlayControls();
+                    break;
             }
         });
     }
@@ -1170,6 +1186,22 @@ class Simulation {
             overlayControls.classList.remove('collapsed');
             expandBtn.style.display = 'none';
         });
+    }
+
+    /**
+     * Toggle overlay controls visibility
+     */
+    toggleOverlayControls() {
+        const overlayControls = document.getElementById('overlay-controls');
+        const expandBtn = document.getElementById('btn-expand-controls');
+        
+        if (overlayControls.classList.contains('collapsed')) {
+            overlayControls.classList.remove('collapsed');
+            expandBtn.style.display = 'none';
+        } else {
+            overlayControls.classList.add('collapsed');
+            expandBtn.style.display = '';
+        }
     }
 
     /**
