@@ -270,9 +270,34 @@ export function updateDistanceTraveled(agent) {
 
 /**
  * Check if agent should die
+ * Enhanced with size-dependent mortality
  */
 export function shouldDie(agent) {
-    return agent.energy <= CONFIG.DEATH_ENERGY_THRESHOLD || !agent.alive;
+    if (!agent.alive) return true;
+    if (agent.energy <= CONFIG.DEATH_ENERGY_THRESHOLD) return true;
+    
+    // BIOLOGICAL REALISM: Larger organisms have higher metabolic costs
+    // Calculate body size penalty
+    const bodySize = agent.genome.nodes.length + agent.genome.motors.length;
+    const sizePenalty = Math.max(0, (bodySize - 10) * 0.5);  // Penalty starts at 10 nodes
+    
+    // Apply size penalty to energy drain
+    agent.energy -= sizePenalty * 0.01;
+    
+    // BIOLOGICAL REALISM: Old age increases mortality risk
+    // Only check every 10 ticks to reduce computational overhead
+    if (agent.age % 10 === 0) {
+        const maxAge = 5000;  // Maximum expected lifespan
+        if (agent.age > maxAge * 0.8) {  // After 80% of max lifespan
+            const ageFactor = (agent.age - maxAge * 0.8) / (maxAge * 0.2);
+            const deathProbability = ageFactor * 0.01;  // Up to 1% per tick
+            if (Math.random() < deathProbability) {
+                return true;
+            }
+        }
+    }
+    
+    return false;
 }
 
 /**

@@ -120,6 +120,7 @@ body {
 .collapse-controls-btn:hover {
     background: var(--danger);
     border-color: var(--danger);
+    z-index: 50;
 }
 
 #overlay-controls button {
@@ -532,7 +533,7 @@ body {
     border-radius: 6px;
     font-weight: 500;
     animation: fadeInOut 3s ease forwards;
-    z-index: 100;
+    z-index: 150;
 }
 
 @keyframes fadeInOut {
@@ -965,7 +966,7 @@ kbd {
     font-size: 12px;
     color: var(--text-primary);
     pointer-events: none;
-    z-index: 100;
+    z-index: 200;
     max-width: 200px;
     display: none;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);

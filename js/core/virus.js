@@ -117,7 +117,7 @@ export function cloneVirus(virus, mutations = true) {
 }
 
 /**
- * Mutate viral genome
+ * Mutate viral genome with improved coevolution
  */
 function mutateViralGenome(genome) {
     const mutations = [
@@ -134,6 +134,34 @@ function mutateViralGenome(genome) {
     for (let i = 0; i < count; i++) {
         const mutation = mutations[Math.floor(Math.random() * mutations.length)];
         mutation();
+    }
+
+    // COEVOLUTION: Viruses evolve in response to host population
+    // If there are many immune hosts, increase CRISPR evasion
+    if (state.agents) {
+        const totalAgents = state.agents.filter(a => a.alive).length;
+        if (totalAgents > 0) {
+            const immuneAgents = state.agents.filter(a => 
+                a.alive && a.genome.viral?.crispr_memory?.length > 0
+            ).length;
+            const immuneRatio = immuneAgents / totalAgents;
+            
+            // If > 30% of population is immune, viruses evolve better evasion
+            if (immuneRatio > 0.3) {
+                genome.crispr_evasion += 0.05;  // Gradual increase
+            }
+            
+            // If < 10% immune, evasion can drift downward (no selection pressure)
+            if (immuneRatio < 0.1 && Math.random() < 0.3) {
+                genome.crispr_evasion -= 0.02;
+            }
+        }
+    }
+
+    // TRADE-OFF: High burst size reduces replication rate
+    // This creates evolutionary trade-offs
+    if (genome.burst_size > 20) {
+        genome.replication_rate *= 0.95;  // Slower replication for high burst
     }
 
     // Clamp values
