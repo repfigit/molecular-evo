@@ -409,16 +409,13 @@ class Simulation {
             }
         });
 
-        // Toggle panel button
+        // Toggle panel button in overlay controls
         const togglePanelBtn = document.getElementById('btn-toggle-panel');
-        const uiPanel = document.getElementById('ui-panel');
         togglePanelBtn?.addEventListener('click', () => {
-            const isHidden = uiPanel.classList.toggle('hidden');
-            togglePanelBtn.classList.toggle('active', isHidden);
-            this.showToast(isHidden ? 'Panel hidden' : 'Panel visible');
+            this.togglePanelVisibility();
         });
 
-        // Panel handle drag functionality
+        // Panel toggle button on panel edge
         this.setupPanelHandle();
 
         // Collapse/Expand controls functionality
