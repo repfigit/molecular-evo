@@ -266,12 +266,12 @@ body {
 
 /* === Panel Toggle Button === */
 .panel-toggle {
-    position: absolute;
-    left: -32px;
+    position: fixed;
+    right: 320px;
     top: 50%;
     transform: translateY(-50%);
-    width: 32px;
-    height: 64px;
+    width: 24px;
+    height: 80px;
     background: var(--bg-tertiary);
     border: 1px solid var(--panel-border);
     border-right: none;
@@ -280,20 +280,22 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
+    transition: right 0.3s ease, background 0.2s;
     /* Higher z-index (1001) than UI panel (100) to ensure it's clickable above canvas */
     z-index: 1001;
     pointer-events: auto;
 }
 
+#ui-panel.hidden .panel-toggle {
+    right: 0;
+}
+
 .panel-toggle:hover {
     background: var(--accent-primary);
-    width: 36px;
-    left: -36px;
 }
 
 .toggle-icon {
-    font-size: 18px;
+    font-size: 16px;
     color: var(--text-primary);
     transition: transform 0.3s ease;
     pointer-events: none;
