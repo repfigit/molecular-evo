@@ -23,6 +23,7 @@ export const state = {
     agents: [],
     viruses: [],
     dnaFragments: [],
+    foodParticles: [],
 
     // === ENVIRONMENT ===
     environment: null,
@@ -67,7 +68,8 @@ export const state = {
         avgEnergy: 0,
         viralLoad: 0,
         dnaFragmentCount: 0,
-        totalResources: 0
+        totalResources: 0,
+        foodCount: 0
     },
 
     // === HISTORY ===
@@ -112,6 +114,7 @@ export function resetState() {
     state.agents = [];
     state.viruses = [];
     state.dnaFragments = [];
+    state.foodParticles = [];
 
     state.environment = null;
 
@@ -210,6 +213,7 @@ export function updateStats() {
     // Viral and DNA counts
     state.stats.viralLoad = state.viruses.length;
     state.stats.dnaFragmentCount = state.dnaFragments.length;
+    state.stats.foodCount = state.foodParticles.length;
 
     // Total resources (calculated by environment system)
     // state.stats.totalResources updated externally
