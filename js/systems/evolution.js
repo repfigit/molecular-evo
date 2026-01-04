@@ -142,8 +142,83 @@ export function calculateFitness(agent) {
         fitness += agent.genome.viral.crispr_memory.length * CONFIG.FITNESS_WEIGHTS.immunity;
     }
 
-    agent.fitness = fitness;
-    return fitness;
+    // === NEW: BIOLOGICAL REALISM IMPROVEMENTS ===
+    
+    // Complexity cost - organisms with more genes have higher metabolic costs
+    const genomeComplexity = agent.genome.nodes.length + 
+                            agent.genome.links.length + 
+                            agent.genome.motors.length + 
+                            agent.genome.sensors.length;
+    const complexityCost = genomeComplexity * CONFIG.GENOME_SIZE_PENALTY;
+    fitness -= complexityCost;
+
+    // Efficiency bonus - reward efficient use of body structure
+    // Agents with fewer unused nodes/motors are more efficient
+    const activeMotors = agent.genome.motors.filter(m => m.cycle_speed > 0.1).length;
+    const motorUtilization = agent.genome.motors.length > 0 
+        ? activeMotors / agent.genome.motors.length 
+        : 0;
+    fitness += motorUtilization * 5;  // Bonus for using all motors
+
+    // Metabolic efficiency - reward high efficiency metabolism
+    fitness += agent.genome.metabolism.efficiency * 10;
+
+    // Frequency-dependent selection - rare phenotypes have slight advantage
+    // This promotes diversity and prevents single-strategy dominance
+    const rarityBonus = calculateRarityBonus(agent);
+    fitness += rarityBonus;
+
+    // Environmental adaptation - fitness depends on temperature tolerance
+    if (state.environment) {
+        const tempStress = calculateTemperatureStress(agent, state.environment.temperature);
+        fitness -= tempStress * 5;  // Penalty for being poorly adapted
+    }
+
+    agent.fitness = Math.max(0, fitness);  // Fitness cannot be negative
+    return agent.fitness;
+}
+
+/**
+ * Calculate rarity bonus for frequency-dependent selection
+ * Rare species/strategies have a slight advantage
+ */
+function calculateRarityBonus(agent) {
+    // Use cached alive agents from state if available
+    const agents = state.agents.filter(a => a.alive);
+    const totalAgents = agents.length;
+    
+    if (totalAgents === 0) return 0;
+    
+    // Count agents with same species
+    const sameSpecies = agents.filter(a => 
+        a.genome.species_marker === agent.genome.species_marker
+    ).length;
+    
+    const frequency = sameSpecies / totalAgents;
+    
+    // Rare species (< 10% of population) get a bonus
+    // Common species (> 50% of population) get a penalty
+    if (frequency < 0.1) {
+        return 10 * (0.1 - frequency);  // Up to +10 bonus for very rare
+    } else if (frequency > 0.5) {
+        return -5 * (frequency - 0.5);  // Up to -2.5 penalty for very common
+    }
+    
+    return 0;
+}
+
+/**
+ * Calculate temperature stress based on environmental temperature
+ * Agents with metabolism tuned to current temp perform better
+ */
+function calculateTemperatureStress(agent, envTemp) {
+    // Assume agents have an optimal temperature range
+    // This creates selection pressure for temperature adaptation
+    const optimalTemp = agent.genome.metabolism.efficiency;  // Use efficiency as proxy for temp adaptation
+    const tempDiff = Math.abs(envTemp - optimalTemp);
+    
+    // Exponential stress increase with temperature difference
+    return tempDiff * tempDiff * 2;  // Quadratic penalty
 }
 
 /**
@@ -236,12 +311,17 @@ function findMate(agent, candidates) {
 }
 
 /**
- * Tournament selection
+ * Tournament selection with genetic drift
+ * Adds stochasticity even for high-fitness individuals
  */
 function tournamentSelect(population, tournamentSize) {
     if (population.length === 0) return null;
     if (population.length <= tournamentSize) {
-        // Return the fittest
+        // Return the fittest (but with some drift for small populations)
+        if (population.length < 5 && Math.random() < 0.2) {
+            // GENETIC DRIFT: In small populations, random selection sometimes
+            return population[randomInt(0, population.length - 1)];
+        }
         return population.reduce((best, current) =>
             (current.fitness || 0) > (best.fitness || 0) ? current : best
         );
@@ -254,9 +334,17 @@ function tournamentSelect(population, tournamentSize) {
         tournament.push(population[idx]);
     }
 
-    return tournament.reduce((best, current) =>
-        (current.fitness || 0) > (best.fitness || 0) ? current : best
-    );
+    // IMPROVED SELECTION: Not always the fittest wins
+    // 80% chance: best fitness wins
+    // 20% chance: random selection (genetic drift)
+    if (Math.random() < 0.8) {
+        return tournament.reduce((best, current) =>
+            (current.fitness || 0) > (best.fitness || 0) ? current : best
+        );
+    } else {
+        // Random drift - any tournament member can win
+        return tournament[randomInt(0, tournament.length - 1)];
+    }
 }
 
 /**

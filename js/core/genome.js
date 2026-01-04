@@ -438,6 +438,7 @@ export function mutateGenome(genome) {
 
 /**
  * Mutate numeric values slightly
+ * Enhanced with pleiotropy - mutations can affect multiple related traits
  */
 function mutateNumericValues(genome) {
     const strength = CONFIG.POINT_MUTATION_STRENGTH;
@@ -445,14 +446,26 @@ function mutateNumericValues(genome) {
     // Mutate node masses
     for (const node of genome.nodes) {
         if (randomBool(0.1)) {
-            node.mass = clamp(node.mass + randomRange(-strength, strength), 0.1, 5.0);
+            const massChange = randomRange(-strength, strength);
+            node.mass = clamp(node.mass + massChange, 0.1, 5.0);
+            
+            // PLEIOTROPY: Mass changes affect friction (larger = more friction)
+            // Initialize friction if not present
+            if (node.friction === undefined) {
+                node.friction = randomRange(0.3, 0.7);
+            }
+            node.friction = clamp(node.friction + massChange * 0.5, 0.1, 0.9);
         }
     }
 
     // Mutate link properties
     for (const link of genome.links) {
         if (randomBool(0.1)) {
-            link.stiffness = clamp(link.stiffness + randomRange(-10, 10), 1, 100);
+            const stiffnessChange = randomRange(-10, 10);
+            link.stiffness = clamp(link.stiffness + stiffnessChange, 1, 100);
+            
+            // PLEIOTROPY: Stiff springs need more damping to be stable
+            link.damping = clamp(link.damping + stiffnessChange * 0.005, 0, 1);
         }
         if (randomBool(0.1)) {
             link.damping = clamp(link.damping + randomRange(-0.1, 0.1), 0, 1);
@@ -462,18 +475,70 @@ function mutateNumericValues(genome) {
     // Mutate motor properties
     for (const motor of genome.motors) {
         if (randomBool(0.1)) {
-            motor.cycle_speed = clamp(motor.cycle_speed + randomRange(-0.5, 0.5), 0.1, 10);
+            const speedChange = randomRange(-0.5, 0.5);
+            motor.cycle_speed = clamp(motor.cycle_speed + speedChange, 0.1, 10);
+            
+            // PLEIOTROPY: Faster motors cost more energy
+            motor.energy_cost = clamp(
+                (motor.energy_cost || 0.1) + Math.abs(speedChange) * 0.1,
+                0.05, 2.0
+            );
         }
         if (randomBool(0.1)) {
-            motor.amplitude = clamp(motor.amplitude + randomRange(-0.1, 0.1), 0, 0.5);
+            const ampChange = randomRange(-0.1, 0.1);
+            motor.amplitude = clamp(motor.amplitude + ampChange, 0, 0.5);
+            
+            // PLEIOTROPY: Larger amplitude needs more energy
+            motor.energy_cost = clamp(
+                (motor.energy_cost || 0.1) + Math.abs(ampChange) * 0.2,
+                0.05, 2.0
+            );
         }
     }
 
-    // Mutate metabolism
+    // Mutate metabolism with correlated changes
     if (randomBool(0.1)) {
+        const efficiencyChange = randomRange(-0.1, 0.1);
         genome.metabolism.efficiency = clamp(
-            genome.metabolism.efficiency + randomRange(-0.1, 0.1), 0.1, 1.0
+            genome.metabolism.efficiency + efficiencyChange, 0.1, 1.0
         );
+        
+        // PLEIOTROPY: Higher efficiency allows larger energy storage
+        // but costs more to maintain (higher base metabolism)
+        if (efficiencyChange > 0) {
+            genome.metabolism.storage_capacity = clamp(
+                genome.metabolism.storage_capacity + 10,
+                50, 300
+            );
+            genome.metabolism.base_metabolism = clamp(
+                genome.metabolism.base_metabolism + 0.01,
+                0.05, 0.3
+            );
+        }
+    }
+
+    // MUTATIONAL LOAD: Small chance of beneficial mutation
+    // Most mutations are neutral or slightly deleterious
+    if (randomBool(0.02)) {  // 2% chance of beneficial mutation
+        // Boost a random trait
+        const beneficialType = randomInt(0, 2);  // 0, 1, or 2 (inclusive)
+        switch (beneficialType) {
+            case 0: // Metabolism boost
+                genome.metabolism.efficiency = clamp(
+                    genome.metabolism.efficiency * 1.1, 0.1, 1.0
+                );
+                break;
+            case 1: // Energy storage boost
+                genome.metabolism.storage_capacity = clamp(
+                    genome.metabolism.storage_capacity * 1.1, 50, 300
+                );
+                break;
+            case 2: // Reduce base cost
+                genome.metabolism.base_metabolism = clamp(
+                    genome.metabolism.base_metabolism * 0.9, 0.05, 0.3
+                );
+                break;
+        }
     }
 }
 
