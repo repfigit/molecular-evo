@@ -409,17 +409,14 @@ class Simulation {
             }
         });
 
-        // Toggle panel button
+        // Toggle panel button in overlay controls
         const togglePanelBtn = document.getElementById('btn-toggle-panel');
-        const uiPanel = document.getElementById('ui-panel');
         togglePanelBtn?.addEventListener('click', () => {
-            const isHidden = uiPanel.classList.toggle('hidden');
-            togglePanelBtn.classList.toggle('active', isHidden);
-            this.showToast(isHidden ? 'Panel hidden' : 'Panel visible');
+            this.togglePanelVisibility();
         });
 
-        // Panel handle drag functionality
-        this.setupPanelHandle();
+        // Panel toggle button on panel edge
+        this.setupPanelToggle();
 
         // Collapse/Expand controls functionality
         this.setupControlsCollapse();
@@ -796,11 +793,7 @@ class Simulation {
                 case 'KeyH':
                     // Toggle panel visibility
                     e.preventDefault();
-                    const uiPanel = document.getElementById('ui-panel');
-                    const toggleBtn = document.getElementById('btn-toggle-panel');
-                    const isHidden = uiPanel.classList.toggle('hidden');
-                    toggleBtn?.classList.toggle('active', isHidden);
-                    this.showToast(isHidden ? 'Panel hidden (H to show)' : 'Panel visible');
+                    this.togglePanelVisibility();
                     break;
                 case 'KeyT':
                     // Toggle turbo mode
@@ -1129,17 +1122,26 @@ class Simulation {
     }
 
     /**
-     * Set up panel handle drag functionality
+     * Toggle panel visibility
      */
-    setupPanelHandle() {
-        const panelHandle = document.getElementById('panel-handle');
+    togglePanelVisibility() {
         const uiPanel = document.getElementById('ui-panel');
-        if (!panelHandle || !uiPanel) return;
+        const toggleBtn = document.getElementById('btn-toggle-panel');
+        const isHidden = uiPanel.classList.toggle('hidden');
+        toggleBtn?.classList.toggle('active', isHidden);
+        this.showToast(isHidden ? 'Panel hidden (H to show)' : 'Panel visible');
+        return isHidden;
+    }
 
-        panelHandle.addEventListener('click', () => {
-            const isHidden = uiPanel.classList.toggle('hidden');
-            const toggleBtn = document.getElementById('btn-toggle-panel');
-            toggleBtn?.classList.toggle('active', isHidden);
+    /**
+     * Set up panel toggle button on panel edge
+     */
+    setupPanelToggle() {
+        const panelToggle = document.getElementById('panel-toggle');
+        if (!panelToggle) return;
+
+        panelToggle.addEventListener('click', () => {
+            this.togglePanelVisibility();
         });
     }
 

@@ -18,7 +18,7 @@
             <!-- Overlay controls -->
             <div id="overlay-controls">
                 <button id="btn-expand-controls" class="expand-controls-btn" title="Expand Controls" style="display:none;">
-                    &#9654;
+                    ⚙
                 </button>
                 <div id="controls-content" class="controls-content">
                     <button id="btn-play-pause" title="Play/Pause (Space)">
@@ -37,18 +37,19 @@
                     <div id="fps-display">FPS: <span id="fps-count">0</span></div>
                     <div id="ups-display" style="display:none;">UPS: <span id="ups-count">0</span></div>
                     <button id="btn-collapse-controls" class="collapse-controls-btn" title="Collapse Controls">
-                        &#9664;
+                        ✕
                     </button>
                 </div>
             </div>
         </div>
 
+        <!-- Panel Toggle Button (outside panel so it stays visible) -->
+        <div id="panel-toggle" class="panel-toggle" title="Toggle Panel (H)">
+            <span class="toggle-icon">◀</span>
+        </div>
+
         <!-- Right panel for UI -->
         <div id="ui-panel">
-            <!-- Panel Handle for sliding -->
-            <div id="panel-handle" class="panel-handle" title="Drag to slide panel">
-                <div class="handle-grip"></div>
-            </div>
             <!-- Tab Navigation -->
             <div class="tab-nav">
                 <button class="tab-btn active" data-tab="status">Status</button>
