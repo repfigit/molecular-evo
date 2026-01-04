@@ -1129,17 +1129,18 @@ class Simulation {
     }
 
     /**
-     * Set up panel handle drag functionality
+     * Set up panel toggle button functionality
      */
     setupPanelHandle() {
-        const panelHandle = document.getElementById('panel-handle');
+        const panelToggle = document.getElementById('panel-toggle');
         const uiPanel = document.getElementById('ui-panel');
-        if (!panelHandle || !uiPanel) return;
+        if (!panelToggle || !uiPanel) return;
 
-        panelHandle.addEventListener('click', () => {
+        panelToggle.addEventListener('click', () => {
             const isHidden = uiPanel.classList.toggle('hidden');
             const toggleBtn = document.getElementById('btn-toggle-panel');
             toggleBtn?.classList.toggle('active', isHidden);
+            this.showToast(isHidden ? 'Panel hidden (H to show)' : 'Panel visible');
         });
     }
 

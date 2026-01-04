@@ -64,6 +64,7 @@ body {
     top: 10px;
     left: 10px;
     display: flex;
+    flex-direction: row;
     align-items: center;
     gap: 10px;
     background: rgba(37, 37, 64, 0.9);
@@ -71,6 +72,7 @@ body {
     border-radius: 8px;
     border: 1px solid var(--panel-border);
     transition: all 0.3s ease;
+    flex-wrap: nowrap;
 }
 
 #overlay-controls.collapsed {
@@ -80,9 +82,11 @@ body {
 
 .controls-content {
     display: flex;
+    flex-direction: row;
     align-items: center;
     gap: 10px;
     transition: all 0.3s ease;
+    flex-wrap: nowrap;
 }
 
 #overlay-controls.collapsed .controls-content {
@@ -93,34 +97,35 @@ body {
     background: var(--bg-tertiary);
     border: 1px solid var(--panel-border);
     color: var(--text-primary);
-    padding: 6px 12px;
+    padding: 8px 12px;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 14px;
-    transition: background 0.2s, border-color 0.2s;
+    font-size: 16px;
+    transition: background 0.2s, border-color 0.2s, transform 0.2s;
 }
 
 .expand-controls-btn:hover {
     background: var(--accent-primary);
     border-color: var(--accent-primary);
+    transform: scale(1.1);
 }
 
 .collapse-controls-btn {
     background: var(--bg-tertiary);
     border: 1px solid var(--panel-border);
     color: var(--text-primary);
-    padding: 6px 8px;
+    padding: 6px 10px;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 14px;
     transition: background 0.2s, border-color 0.2s;
     margin-left: 5px;
+    flex-shrink: 0;
 }
 
 .collapse-controls-btn:hover {
     background: var(--danger);
     border-color: var(--danger);
-    z-index: 50;
 }
 
 #overlay-controls button {
@@ -252,11 +257,57 @@ body {
     overflow: hidden;
     position: relative;
     transition: transform 0.3s ease;
-    z-index: 10;
+    z-index: 100;
 }
 
 #ui-panel.hidden {
     transform: translateX(100%);
+}
+
+/* === Panel Toggle Button === */
+.panel-toggle {
+    position: absolute;
+    left: -32px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 64px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--panel-border);
+    border-right: none;
+    border-radius: 8px 0 0 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    z-index: 1001;
+    pointer-events: auto;
+}
+
+.panel-toggle:hover {
+    background: var(--accent-primary);
+    width: 36px;
+    left: -36px;
+}
+
+.toggle-icon {
+    font-size: 18px;
+    color: var(--text-primary);
+    transition: transform 0.3s ease;
+    pointer-events: none;
+}
+
+#ui-panel.hidden .toggle-icon {
+    transform: rotate(180deg);
+}
+
+.panel-toggle:hover .toggle-icon {
+    transform: scale(1.2);
+}
+
+#ui-panel.hidden .panel-toggle:hover .toggle-icon {
+    transform: rotate(180deg) scale(1.2);
 }
 
 /* === Panel Handle === */
