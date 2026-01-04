@@ -24,6 +24,7 @@ import { processHGT } from './systems/hgt.js';
 import { processViral, initViruses } from './systems/viral.js';
 import { processImmunity } from './systems/immunity.js';
 import { processEvents, getActiveEvents, triggerEvent, EVENT_TYPES, triggerCatastrophe } from './systems/events.js';
+import { initFood, updateFood } from './systems/food.js';
 
 // Rendering
 import { createRenderer } from './rendering/renderer.js';
@@ -93,6 +94,9 @@ class Simulation {
 
         // Initialize environment
         initEnvironment();
+
+        // Initialize food system
+        initFood(CONFIG.FOOD_MAX_COUNT / 2);
 
         // Initialize population with proper agents
         this.initPopulation();
@@ -236,6 +240,9 @@ class Simulation {
 
         // Update environment system
         updateEnvironment(dt);
+
+        // Update food system
+        updateFood(dt);
 
         // Update physics using the physics system
         updatePhysics(state.agents, dt);
@@ -892,6 +899,7 @@ class Simulation {
         document.getElementById('value-symbiotic').textContent = state.stats.symbioticCount;
         document.getElementById('value-avg-plasmids').textContent = state.stats.avgPlasmids.toFixed(1);
         document.getElementById('value-infected').textContent = state.stats.infectedCount;
+        document.getElementById('value-food-count').textContent = state.stats.foodCount;
         document.getElementById('value-dna-fragments').textContent = state.stats.dnaFragmentCount;
         document.getElementById('value-viral-load').textContent = state.stats.viralLoad;
 
@@ -1175,6 +1183,7 @@ class Simulation {
         resetState();
 
         initEnvironment();
+        initFood(CONFIG.FOOD_MAX_COUNT / 2);
         this.initPopulation();
         initViruses(CONFIG.INITIAL_VIRUS_COUNT);
 

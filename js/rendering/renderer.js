@@ -22,6 +22,7 @@ export class Renderer {
         this.layers = [
             'environment',  // Background, resources, temperature
             'grid',         // Spatial hash grid (debug)
+            'food',         // Food particles
             'dna',          // DNA fragments
             'agents',       // Agents/organisms
             'viruses',      // Viral particles
@@ -35,6 +36,7 @@ export class Renderer {
         this.layerVisible = {
             environment: true,
             grid: false,
+            food: true,
             dna: true,
             agents: true,
             viruses: true,
@@ -110,6 +112,10 @@ export class Renderer {
                 this.renderSpatialGrid(ctx);
                 break;
 
+            case 'food':
+                this.renderFood(ctx);
+                break;
+
             case 'dna':
                 this.renderDNAFragments(ctx);
                 break;
@@ -183,6 +189,26 @@ export class Renderer {
             ctx.beginPath();
             ctx.moveTo(0, i * cellSize);
             ctx.lineTo(CONFIG.WORLD_WIDTH, i * cellSize);
+            ctx.stroke();
+        }
+    }
+
+    /**
+     * Render food particles
+     */
+    renderFood(ctx) {
+        if (!state.foodParticles || state.foodParticles.length === 0) return;
+
+        ctx.fillStyle = '#88ff88';  // Green color for food
+        ctx.strokeStyle = '#44aa44';
+        ctx.lineWidth = 1;
+
+        for (const food of state.foodParticles) {
+            if (food.consumed) continue;
+
+            ctx.beginPath();
+            ctx.arc(food.position.x, food.position.y, CONFIG.FOOD_RADIUS, 0, Math.PI * 2);
+            ctx.fill();
             ctx.stroke();
         }
     }

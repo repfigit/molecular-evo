@@ -67,6 +67,13 @@ export const CONFIG = {
     ENERGY_FROM_LIGHT: 8,
     ENERGY_FROM_ORGANIC: 15,
 
+    // Food particles
+    FOOD_SPAWN_RATE: 0.02,              // Chance per tick to spawn food
+    FOOD_MAX_COUNT: 200,                // Maximum food particles
+    FOOD_ENERGY_VALUE: 30,              // Energy gained from eating food
+    FOOD_RADIUS: 3,                     // Visual radius of food particles
+    FOOD_CONSUMPTION_RANGE: 15,         // Distance to consume food
+
     CATASTROPHE_CHANCE: 0.0001,         // Per tick chance
 
     // === PHYSICS ===
