@@ -416,7 +416,7 @@ class Simulation {
         });
 
         // Panel toggle button on panel edge
-        this.setupPanelHandle();
+        this.setupPanelToggle();
 
         // Collapse/Expand controls functionality
         this.setupControlsCollapse();
@@ -1134,9 +1134,9 @@ class Simulation {
     }
 
     /**
-     * Set up panel toggle button functionality
+     * Set up panel toggle button on panel edge
      */
-    setupPanelHandle() {
+    setupPanelToggle() {
         const panelToggle = document.getElementById('panel-toggle');
         if (!panelToggle) return;
 
