@@ -28,6 +28,7 @@
                     <span id="speed-value">1x</span>
                 </div>
                 <button id="btn-turbo" title="Turbo Mode - Skip rendering for maximum speed">TURBO</button>
+                <button id="btn-toggle-panel" title="Toggle Control Panel (H)">&#9776;</button>
                 <div id="generation-display">Gen: <span id="generation-count">0</span></div>
                 <div id="fps-display">FPS: <span id="fps-count">0</span></div>
                 <div id="ups-display" style="display:none;">UPS: <span id="ups-count">0</span></div>
@@ -197,17 +198,26 @@
                         </h3>
                         <div class="panel-content" id="section-params">
                             <div class="control-row">
-                                <label for="param-mutation-rate">Mutation Rate</label>
+                                <label for="param-mutation-rate">
+                                    Mutation Rate
+                                    <span class="info-icon" data-tooltip="Controls how often genetic mutations occur during reproduction. Higher values lead to faster evolution but may destabilize successful traits.">ℹ️</span>
+                                </label>
                                 <input type="range" id="param-mutation-rate" min="0.01" max="0.5" step="0.01" value="0.1">
                                 <span class="param-value" id="value-mutation-rate">0.1</span>
                             </div>
                             <div class="control-row">
-                                <label for="param-reproduction">Repro Threshold</label>
+                                <label for="param-reproduction">
+                                    Repro Threshold
+                                    <span class="info-icon" data-tooltip="Energy level required for an agent to reproduce. Lower values increase population growth, higher values favor energy-efficient organisms.">ℹ️</span>
+                                </label>
                                 <input type="range" id="param-reproduction" min="50" max="200" step="10" value="80">
                                 <span class="param-value" id="value-reproduction">80</span>
                             </div>
                             <div class="control-row">
-                                <label for="param-catastrophe">Catastrophe Rate</label>
+                                <label for="param-catastrophe">
+                                    Catastrophe Rate
+                                    <span class="info-icon" data-tooltip="Probability of random catastrophic events (meteor strikes, toxic blooms). Creates selection pressure favoring adaptable organisms.">ℹ️</span>
+                                </label>
                                 <input type="range" id="param-catastrophe" min="0" max="0.01" step="0.001" value="0.001">
                                 <span class="param-value" id="value-catastrophe">0.001</span>
                             </div>
@@ -222,17 +232,26 @@
                         </h3>
                         <div class="panel-content" id="section-env-controls">
                             <div class="control-row">
-                                <label for="env-temperature">Temperature</label>
+                                <label for="env-temperature">
+                                    Temperature
+                                    <span class="info-icon" data-tooltip="Environmental temperature affects metabolism cost. Extreme temperatures (near 0 or 1) increase energy consumption up to 3x, favoring heat-adapted organisms.">ℹ️</span>
+                                </label>
                                 <input type="range" id="env-temperature" min="0" max="1" step="0.05" value="0.5">
                                 <span class="param-value" id="value-env-temperature">0.5</span>
                             </div>
                             <div class="control-row">
-                                <label for="env-viscosity">Viscosity</label>
+                                <label for="env-viscosity">
+                                    Viscosity
+                                    <span class="info-icon" data-tooltip="Medium thickness that resists movement. Higher viscosity slows agents down, favoring stronger motor systems and efficient movement patterns.">ℹ️</span>
+                                </label>
                                 <input type="range" id="env-viscosity" min="0.1" max="0.9" step="0.05" value="0.3">
                                 <span class="param-value" id="value-env-viscosity">0.3</span>
                             </div>
                             <div class="control-row">
-                                <label for="env-resources">Resource Regen</label>
+                                <label for="env-resources">
+                                    Resource Regen
+                                    <span class="info-icon" data-tooltip="Rate at which food resources regenerate in the environment. Higher values support larger populations and reduce competition for food.">ℹ️</span>
+                                </label>
                                 <input type="range" id="env-resources" min="0" max="0.1" step="0.005" value="0.01">
                                 <span class="param-value" id="value-env-resources">0.01</span>
                             </div>
@@ -259,7 +278,10 @@
                                 </label>
                             </div>
                             <div class="control-row">
-                                <label for="param-season-length">Season Length</label>
+                                <label for="param-season-length">
+                                    Season Length
+                                    <span class="info-icon" data-tooltip="Duration of each season in simulation ticks. Shorter seasons require faster adaptation, while longer seasons allow specialization to seasonal conditions.">ℹ️</span>
+                                </label>
                                 <input type="range" id="param-season-length" min="500" max="5000" step="100" value="2000">
                                 <span class="param-value" id="value-season-length">2000</span>
                             </div>
@@ -350,10 +372,11 @@
                         <div class="panel-content" id="section-help">
                             <div class="help-row"><kbd>Space</kbd> Play/Pause</div>
                             <div class="help-row"><kbd>+/-</kbd> Speed Up/Down</div>
+                            <div class="help-row"><kbd>H</kbd> Toggle Panel</div>
+                            <div class="help-row"><kbd>T</kbd> Toggle Turbo</div>
                             <div class="help-row"><kbd>Ctrl+R</kbd> Reset</div>
                             <div class="help-row"><kbd>Scroll</kbd> Zoom</div>
                             <div class="help-row"><kbd>Drag</kbd> Pan camera</div>
-                            <div class="help-row"><kbd>T</kbd> Toggle Turbo</div>
                         </div>
                     </div>
 
