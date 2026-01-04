@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Molecular Evolution Simulator</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Main simulation canvas -->
+        <div id="simulation-container">
+            <canvas id="simulation-canvas"></canvas>
+
+            <!-- Hover tooltip -->
+            <div id="canvas-tooltip" class="canvas-tooltip"></div>
+
+            <!-- Overlay controls -->
+            <div id="overlay-controls">
+                <button id="btn-play-pause" title="Play/Pause (Space)">
+                    <span class="icon-play">&#9654;</span>
+                    <span class="icon-pause" style="display:none;">&#10074;&#10074;</span>
+                </button>
+                <button id="btn-step" title="Step Forward">&#8677;</button>
+                <div id="speed-control">
+                    <label for="speed-slider">Speed:</label>
+                    <input type="range" id="speed-slider" min="0.25" max="32" step="0.25" value="1">
+                    <span id="speed-value">1x</span>
+                </div>
+                <button id="btn-turbo" title="Turbo Mode - Skip rendering for maximum speed">TURBO</button>
+                <div id="generation-display">Gen: <span id="generation-count">0</span></div>
+                <div id="fps-display">FPS: <span id="fps-count">0</span></div>
+                <div id="ups-display" style="display:none;">UPS: <span id="ups-count">0</span></div>
+            </div>
+        </div>
+
+        <!-- Right panel for UI -->
+        <div id="ui-panel">
+            <!-- Tab Navigation -->
+            <div class="tab-nav">
+                <button class="tab-btn active" data-tab="status">Status</button>
+                <button class="tab-btn" data-tab="view">View</button>
+                <button class="tab-btn" data-tab="control">Control</button>
+                <button class="tab-btn" data-tab="features">Features</button>
+                <button class="tab-btn" data-tab="system">System</button>
+            </div>
+
+            <!-- Tab Content Container -->
+            <div class="tab-content-container">
+                <!-- STATUS TAB -->
+                <div class="tab-content active" id="tab-status">
+                    <!-- Environment Section -->
+                    <div class="panel collapsible">
+                        <h3 class="panel-header" data-collapse="environment">
+                            <span>Environment</span>
+                            <span class="collapse-icon">-</span>
+                        </h3>
+                        <div class="panel-content" id="section-environment">
+                            <div class="stat-row">
+                                <span class="stat-label">Season</span>
+                                <span class="stat-value" id="value-season">Spring</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Weather</span>
+                                <span class="stat-value" id="value-weather">Clear</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Temperature</span>
+                                <div class="gauge-container">
+                                    <div class="gauge-fill" id="gauge-temperature"></div>
+                                </div>
+                                <span class="stat-value" id="value-temperature">0.5</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Viscosity</span>
+                                <div class="gauge-container">
+                                    <div class="gauge-fill" id="gauge-viscosity"></div>
+                                </div>
+                                <span class="stat-value" id="value-viscosity">0.3</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Resources</span>
+                                <div class="gauge-container">
+                                    <div class="gauge-fill" id="gauge-resources"></div>
+                                </div>
+                                <span class="stat-value" id="value-resources">0</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Free DNA</span>
+                                <span class="stat-value" id="value-dna-fragments">0</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Viral Load</span>
+                                <span class="stat-value" id="value-viral-load">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Population Section -->
+                    <div class="panel collapsible">
+                        <h3 class="panel-header" data-collapse="population">
+                            <span>Population</span>
+                            <span class="collapse-icon">-</span>
+                        </h3>
+                        <div class="panel-content" id="section-population">
+                            <div class="stat-row">
+                                <span class="stat-label">Total Agents</span>
+                                <span class="stat-value" id="value-total-agents">0</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Species</span>
+                                <span class="stat-value" id="value-species-count">0</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Cooperating</span>
+                                <span class="stat-value" id="value-cooperating">0</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Symbiotic</span>
+                                <span class="stat-value" id="value-symbiotic">0</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Avg Plasmids</span>
+                                <span class="stat-value" id="value-avg-plasmids">0</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Infected</span>
+                                <span class="stat-value" id="value-infected">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Selected Entity Section -->
+                    <div class="panel collapsible">
+                        <h3 class="panel-header" data-collapse="selected">
+                            <span>Selected</span>
+                            <span class="collapse-icon">-</span>
+                        </h3>
+                        <div class="panel-content" id="selected-content">
+                            <div class="empty-state">Click an agent to inspect</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- VIEW TAB -->
+                <div class="tab-content" id="tab-view">
+                    <!-- View Controls Section -->
+                    <div class="panel collapsible">
+                        <h3 class="panel-header" data-collapse="view-options">
+                            <span>Display Options</span>
+                            <span class="collapse-icon">-</span>
+                        </h3>
+                        <div class="panel-content" id="section-view-options">
+                            <div class="control-row">
+                                <label for="overlay-select">Overlay:</label>
+                                <select id="overlay-select">
+                                    <option value="none">None</option>
+                                    <option value="resources">Resources</option>
+                                    <option value="temperature">Temperature</option>
+                                    <option value="species">Species</option>
+                                    <option value="viral">Viral</option>
+                                    <option value="dna">DNA Fragments</option>
+                                </select>
+                            </div>
+                            <div class="control-row">
+                                <label for="color-mode-select">Agent Color:</label>
+                                <select id="color-mode-select">
+                                    <option value="species">Species</option>
+                                    <option value="energy">Energy</option>
+                                    <option value="age">Age</option>
+                                    <option value="fitness">Fitness</option>
+                                    <option value="infection">Infection</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Graphs Section -->
+                    <div class="panel collapsible">
+                        <h3 class="panel-header" data-collapse="graphs">
+                            <span>Statistics Graphs</span>
+                            <span class="collapse-icon">-</span>
+                        </h3>
+                        <div class="panel-content" id="graphs-container">
+                            <!-- Graphs will be dynamically inserted here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CONTROL TAB -->
+                <div class="tab-content" id="tab-control">
+                    <!-- Evolution Parameters Section -->
+                    <div class="panel collapsible">
+                        <h3 class="panel-header" data-collapse="params">
+                            <span>Evolution Parameters</span>
+                            <span class="collapse-icon">-</span>
+                        </h3>
+                        <div class="panel-content" id="section-params">
+                            <div class="control-row">
+                                <label for="param-mutation-rate">Mutation Rate</label>
+                                <input type="range" id="param-mutation-rate" min="0.01" max="0.5" step="0.01" value="0.1">
+                                <span class="param-value" id="value-mutation-rate">0.1</span>
+                            </div>
+                            <div class="control-row">
+                                <label for="param-reproduction">Repro Threshold</label>
+                                <input type="range" id="param-reproduction" min="50" max="200" step="10" value="80">
+                                <span class="param-value" id="value-reproduction">80</span>
+                            </div>
+                            <div class="control-row">
+                                <label for="param-catastrophe">Catastrophe Rate</label>
+                                <input type="range" id="param-catastrophe" min="0" max="0.01" step="0.001" value="0.001">
+                                <span class="param-value" id="value-catastrophe">0.001</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Environment Controls Section -->
+                    <div class="panel collapsible">
+                        <h3 class="panel-header" data-collapse="env-controls">
+                            <span>Environment Controls</span>
+                            <span class="collapse-icon">-</span>
+                        </h3>
+                        <div class="panel-content" id="section-env-controls">
+                            <div class="control-row">
+                                <label for="env-temperature">Temperature</label>
+                                <input type="range" id="env-temperature" min="0" max="1" step="0.05" value="0.5">
+                                <span class="param-value" id="value-env-temperature">0.5</span>
+                            </div>
+                            <div class="control-row">
+                                <label for="env-viscosity">Viscosity</label>
+                                <input type="range" id="env-viscosity" min="0.1" max="0.9" step="0.05" value="0.3">
+                                <span class="param-value" id="value-env-viscosity">0.3</span>
+                            </div>
+                            <div class="control-row">
+                                <label for="env-resources">Resource Regen</label>
+                                <input type="range" id="env-resources" min="0" max="0.1" step="0.005" value="0.01">
+                                <span class="param-value" id="value-env-resources">0.01</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Seasons & Weather Section -->
+                    <div class="panel collapsible">
+                        <h3 class="panel-header" data-collapse="seasons">
+                            <span>Seasons & Weather</span>
+                            <span class="collapse-icon">-</span>
+                        </h3>
+                        <div class="panel-content" id="section-seasons">
+                            <div class="control-row">
+                                <label class="toggle-row">
+                                    <input type="checkbox" id="toggle-seasons" checked>
+                                    <span>Enable Seasons</span>
+                                </label>
+                            </div>
+                            <div class="control-row">
+                                <label class="toggle-row">
+                                    <input type="checkbox" id="toggle-weather" checked>
+                                    <span>Enable Weather</span>
+                                </label>
+                            </div>
+                            <div class="control-row">
+                                <label for="param-season-length">Season Length</label>
+                                <input type="range" id="param-season-length" min="500" max="5000" step="100" value="2000">
+                                <span class="param-value" id="value-season-length">2000</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- FEATURES TAB -->
+                <div class="tab-content" id="tab-features">
+                    <!-- Feature Toggles Section -->
+                    <div class="panel collapsible">
+                        <h3 class="panel-header" data-collapse="toggles">
+                            <span>Feature Toggles</span>
+                            <span class="collapse-icon">-</span>
+                        </h3>
+                        <div class="panel-content toggles-grid" id="section-toggles">
+                            <label class="toggle-row">
+                                <input type="checkbox" id="toggle-viruses" checked>
+                                <span>Viruses</span>
+                            </label>
+                            <label class="toggle-row">
+                                <input type="checkbox" id="toggle-hgt" checked>
+                                <span>Gene Transfer</span>
+                            </label>
+                            <label class="toggle-row">
+                                <input type="checkbox" id="toggle-cooperation" checked>
+                                <span>Cooperation</span>
+                            </label>
+                            <label class="toggle-row">
+                                <input type="checkbox" id="toggle-competition" checked>
+                                <span>Competition</span>
+                            </label>
+                            <label class="toggle-row">
+                                <input type="checkbox" id="toggle-symbiosis" checked>
+                                <span>Symbiosis</span>
+                            </label>
+                            <label class="toggle-row">
+                                <input type="checkbox" id="toggle-immunity" checked>
+                                <span>Immunity</span>
+                            </label>
+                            <label class="toggle-row">
+                                <input type="checkbox" id="toggle-catastrophes" checked>
+                                <span>Catastrophes</span>
+                            </label>
+                            <label class="toggle-row">
+                                <input type="checkbox" id="toggle-mutations" checked>
+                                <span>Mutations</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Injection Section -->
+                    <div class="panel collapsible">
+                        <h3 class="panel-header" data-collapse="inject">
+                            <span>Inject Events</span>
+                            <span class="collapse-icon">-</span>
+                        </h3>
+                        <div class="panel-content" id="section-inject">
+                            <button class="action-btn" id="btn-inject-agents" title="Add 10 random agents">+ Agents</button>
+                            <button class="action-btn" id="btn-inject-virus" title="Spawn viral outbreak">+ Virus Outbreak</button>
+                            <button class="action-btn" id="btn-inject-resources" title="Trigger resource bloom">+ Resource Bloom</button>
+                            <button class="action-btn danger" id="btn-inject-catastrophe" title="Trigger random catastrophe">Catastrophe!</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SYSTEM TAB -->
+                <div class="tab-content" id="tab-system">
+                    <!-- Actions Section -->
+                    <div class="panel collapsible">
+                        <h3 class="panel-header" data-collapse="actions">
+                            <span>Simulation Actions</span>
+                            <span class="collapse-icon">-</span>
+                        </h3>
+                        <div class="panel-content" id="section-actions">
+                            <button class="action-btn" id="btn-reset">Reset Simulation</button>
+                            <button class="action-btn" id="btn-save">Save State</button>
+                            <button class="action-btn" id="btn-load">Load State</button>
+                        </div>
+                    </div>
+
+                    <!-- Help Section -->
+                    <div class="panel collapsible">
+                        <h3 class="panel-header" data-collapse="help">
+                            <span>Keyboard Shortcuts</span>
+                            <span class="collapse-icon">-</span>
+                        </h3>
+                        <div class="panel-content" id="section-help">
+                            <div class="help-row"><kbd>Space</kbd> Play/Pause</div>
+                            <div class="help-row"><kbd>+/-</kbd> Speed Up/Down</div>
+                            <div class="help-row"><kbd>Ctrl+R</kbd> Reset</div>
+                            <div class="help-row"><kbd>Scroll</kbd> Zoom</div>
+                            <div class="help-row"><kbd>Drag</kbd> Pan camera</div>
+                            <div class="help-row"><kbd>T</kbd> Toggle Turbo</div>
+                        </div>
+                    </div>
+
+                    <!-- About Section -->
+                    <div class="panel collapsible">
+                        <h3 class="panel-header" data-collapse="about">
+                            <span>About</span>
+                            <span class="collapse-icon">-</span>
+                        </h3>
+                        <div class="panel-content" id="section-about">
+                            <p class="about-text">Molecular Evolution Simulator</p>
+                            <p class="about-version">Watch artificial organisms evolve, compete, cooperate, and adapt to changing environments.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden file input for loading -->
+    <input type="file" id="file-input" accept=".json" style="display: none;">
+
+    <!-- Load scripts as ES6 modules -->
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
