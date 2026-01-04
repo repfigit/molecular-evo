@@ -1143,6 +1143,14 @@ class Simulation {
         panelToggle.addEventListener('click', () => {
             this.togglePanelVisibility();
         });
+
+        // Also set up the panel handle
+        const panelHandle = document.querySelector('.panel-handle');
+        if (panelHandle) {
+            panelHandle.addEventListener('click', () => {
+                this.togglePanelVisibility();
+            });
+        }
     }
 
     /**
