@@ -248,8 +248,18 @@ class Simulation {
                 // Age agents
                 agent.age++;
 
-                // Apply base metabolism cost
-                agent.energy -= CONFIG.BASE_METABOLISM_COST * dt;
+                // Apply base metabolism cost, increased by temperature stress
+                let metabolismCost = CONFIG.BASE_METABOLISM_COST * dt;
+                
+                // Temperature affects metabolism - extreme temps cost more energy
+                if (state.environment) {
+                    const optimalTemp = 0.5;
+                    const tempDiff = Math.abs(state.environment.temperature - optimalTemp);
+                    const tempStressFactor = 1 + (tempDiff * 2); // Up to 3x cost at extreme temps
+                    metabolismCost *= tempStressFactor;
+                }
+                
+                agent.energy -= metabolismCost;
 
                 // Update fitness periodically
                 if (state.tick % 100 === 0) {
