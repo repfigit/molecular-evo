@@ -286,7 +286,8 @@ body {
     pointer-events: auto;
 }
 
-#ui-panel.hidden .panel-toggle {
+/* When panel is hidden, move toggle to screen edge */
+body:has(#ui-panel.hidden) .panel-toggle {
     right: 0;
 }
 
@@ -301,7 +302,8 @@ body {
     pointer-events: none;
 }
 
-#ui-panel.hidden .toggle-icon {
+/* Rotate icon when panel is hidden */
+body:has(#ui-panel.hidden) .toggle-icon {
     transform: rotate(180deg);
 }
 
@@ -309,7 +311,7 @@ body {
     transform: scale(1.2);
 }
 
-#ui-panel.hidden .panel-toggle:hover .toggle-icon {
+body:has(#ui-panel.hidden) .panel-toggle:hover .toggle-icon {
     transform: rotate(180deg) scale(1.2);
 }
 
