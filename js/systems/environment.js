@@ -268,13 +268,15 @@ function updateViscosity(env, dt) {
  * Regenerate resources over time
  */
 function regenerateResources(env, dt) {
-    const regenRate = CONFIG.RESOURCE_REGEN_BASE * dt;
+    // Get season/weather modifiers
+    const mods = getEnvironmentModifiers();
+    const regenRate = CONFIG.RESOURCE_REGEN_BASE * dt * mods.resourceMod;
 
     for (let y = 0; y < env.rows; y++) {
         for (let x = 0; x < env.cols; x++) {
             const cell = env.resources[y][x];
 
-            // Chemical A regeneration
+            // Chemical A regeneration (affected by season/weather)
             if (cell.chemical_A < CONFIG.RESOURCE_MAX) {
                 cell.chemical_A = Math.min(
                     CONFIG.RESOURCE_MAX,
@@ -282,7 +284,7 @@ function regenerateResources(env, dt) {
                 );
             }
 
-            // Chemical B regeneration
+            // Chemical B regeneration (affected by season/weather)
             if (cell.chemical_B < CONFIG.RESOURCE_MAX) {
                 cell.chemical_B = Math.min(
                     CONFIG.RESOURCE_MAX,
@@ -290,10 +292,13 @@ function regenerateResources(env, dt) {
                 );
             }
 
-            // Light regeneration (instant, based on position)
+            // Light regeneration (instant, based on position and season)
+            const seasonalLightMod = CONFIG.ENABLE_SEASONS ? 
+                CONFIG.SEASONS[state.currentSeason].light : 1.0;
+            const targetLight = calculateLightLevel(x, y, env.cols, env.rows) * seasonalLightMod;
             cell.light = lerp(
                 cell.light,
-                calculateLightLevel(x, y, env.cols, env.rows),
+                Math.min(CONFIG.RESOURCE_MAX, targetLight),
                 0.01
             );
         }
@@ -684,6 +689,15 @@ export function processFeeding(agent, dt) {
 
     // Apply efficiency bonus if present
     energyGained *= (1 + (agent.metabolism_efficiency_bonus || 0));
+
+    // Apply temperature stress - extreme temperatures reduce energy efficiency
+    const env = state.environment;
+    if (env) {
+        const optimalTemp = 0.5;
+        const tempDiff = Math.abs(env.temperature - optimalTemp);
+        const tempStress = 1 - (tempDiff * 0.5); // Up to 50% penalty at extreme temps
+        energyGained *= Math.max(0.5, tempStress);
+    }
 
     // Add energy to agent
     const added = Math.min(
