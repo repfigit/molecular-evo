@@ -17,26 +17,38 @@
 
             <!-- Overlay controls -->
             <div id="overlay-controls">
-                <button id="btn-play-pause" title="Play/Pause (Space)">
-                    <span class="icon-play">&#9654;</span>
-                    <span class="icon-pause" style="display:none;">&#10074;&#10074;</span>
+                <button id="btn-expand-controls" class="expand-controls-btn" title="Expand Controls" style="display:none;">
+                    &#9654;
                 </button>
-                <button id="btn-step" title="Step Forward">&#8677;</button>
-                <div id="speed-control">
-                    <label for="speed-slider">Speed:</label>
-                    <input type="range" id="speed-slider" min="0.25" max="32" step="0.25" value="1">
-                    <span id="speed-value">1x</span>
+                <div id="controls-content" class="controls-content">
+                    <button id="btn-play-pause" title="Play/Pause (Space)">
+                        <span class="icon-play">&#9654;</span>
+                        <span class="icon-pause" style="display:none;">&#10074;&#10074;</span>
+                    </button>
+                    <button id="btn-step" title="Step Forward">&#8677;</button>
+                    <div id="speed-control">
+                        <label for="speed-slider">Speed:</label>
+                        <input type="range" id="speed-slider" min="0.25" max="32" step="0.25" value="1">
+                        <span id="speed-value">1x</span>
+                    </div>
+                    <button id="btn-turbo" title="Turbo Mode - Skip rendering for maximum speed">TURBO</button>
+                    <button id="btn-toggle-panel" title="Toggle Control Panel (H)">&#9776;</button>
+                    <div id="generation-display">Gen: <span id="generation-count">0</span></div>
+                    <div id="fps-display">FPS: <span id="fps-count">0</span></div>
+                    <div id="ups-display" style="display:none;">UPS: <span id="ups-count">0</span></div>
+                    <button id="btn-collapse-controls" class="collapse-controls-btn" title="Collapse Controls">
+                        &#9664;
+                    </button>
                 </div>
-                <button id="btn-turbo" title="Turbo Mode - Skip rendering for maximum speed">TURBO</button>
-                <button id="btn-toggle-panel" title="Toggle Control Panel (H)">&#9776;</button>
-                <div id="generation-display">Gen: <span id="generation-count">0</span></div>
-                <div id="fps-display">FPS: <span id="fps-count">0</span></div>
-                <div id="ups-display" style="display:none;">UPS: <span id="ups-count">0</span></div>
             </div>
         </div>
 
         <!-- Right panel for UI -->
         <div id="ui-panel">
+            <!-- Panel Handle for sliding -->
+            <div id="panel-handle" class="panel-handle" title="Drag to slide panel">
+                <div class="handle-grip"></div>
+            </div>
             <!-- Tab Navigation -->
             <div class="tab-nav">
                 <button class="tab-btn active" data-tab="status">Status</button>

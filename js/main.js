@@ -418,6 +418,12 @@ class Simulation {
             this.showToast(isHidden ? 'Panel hidden' : 'Panel visible');
         });
 
+        // Panel handle drag functionality
+        this.setupPanelHandle();
+
+        // Collapse/Expand controls functionality
+        this.setupControlsCollapse();
+
         // Overlay select
         const overlaySelect = document.getElementById('overlay-select');
         overlaySelect?.addEventListener('change', (e) => {
@@ -1120,6 +1126,40 @@ class Simulation {
                 <span class="stat-value">${agent.genome.hgt.plasmids.length}</span>
             </div>
         `;
+    }
+
+    /**
+     * Set up panel handle drag functionality
+     */
+    setupPanelHandle() {
+        const panelHandle = document.getElementById('panel-handle');
+        const uiPanel = document.getElementById('ui-panel');
+        if (!panelHandle || !uiPanel) return;
+
+        panelHandle.addEventListener('click', () => {
+            const isHidden = uiPanel.classList.toggle('hidden');
+            const toggleBtn = document.getElementById('btn-toggle-panel');
+            toggleBtn?.classList.toggle('active', isHidden);
+        });
+    }
+
+    /**
+     * Set up controls collapse/expand functionality
+     */
+    setupControlsCollapse() {
+        const collapseBtn = document.getElementById('btn-collapse-controls');
+        const expandBtn = document.getElementById('btn-expand-controls');
+        const overlayControls = document.getElementById('overlay-controls');
+
+        collapseBtn?.addEventListener('click', () => {
+            overlayControls.classList.add('collapsed');
+            expandBtn.style.display = '';
+        });
+
+        expandBtn?.addEventListener('click', () => {
+            overlayControls.classList.remove('collapsed');
+            expandBtn.style.display = 'none';
+        });
     }
 
     /**

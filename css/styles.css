@@ -70,6 +70,56 @@ body {
     padding: 8px 12px;
     border-radius: 8px;
     border: 1px solid var(--panel-border);
+    transition: all 0.3s ease;
+}
+
+#overlay-controls.collapsed {
+    padding: 8px;
+    gap: 0;
+}
+
+.controls-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.3s ease;
+}
+
+#overlay-controls.collapsed .controls-content {
+    display: none;
+}
+
+.expand-controls-btn {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--panel-border);
+    color: var(--text-primary);
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.expand-controls-btn:hover {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+}
+
+.collapse-controls-btn {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--panel-border);
+    color: var(--text-primary);
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.2s, border-color 0.2s;
+    margin-left: 5px;
+}
+
+.collapse-controls-btn:hover {
+    background: var(--danger);
+    border-color: var(--danger);
     z-index: 50;
 }
 
@@ -200,13 +250,59 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    transition: transform 0.3s ease, opacity 0.3s ease;
+    position: relative;
+    transition: transform 0.3s ease;
+    z-index: 10;
 }
 
 #ui-panel.hidden {
     transform: translateX(100%);
-    opacity: 0;
-    pointer-events: none;
+}
+
+/* === Panel Handle === */
+.panel-handle {
+    position: absolute;
+    left: -12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 12px;
+    height: 80px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--panel-border);
+    border-right: none;
+    border-radius: 6px 0 0 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, width 0.2s;
+    z-index: 1000;
+}
+
+.panel-handle:hover {
+    background: var(--accent-primary);
+    width: 16px;
+}
+
+.handle-grip {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    align-items: center;
+}
+
+.handle-grip::before,
+.handle-grip::after {
+    content: '';
+    width: 2px;
+    height: 20px;
+    background: var(--text-muted);
+    border-radius: 1px;
+}
+
+.panel-handle:hover .handle-grip::before,
+.panel-handle:hover .handle-grip::after {
+    background: var(--text-primary);
 }
 
 /* === Panel Components === */
