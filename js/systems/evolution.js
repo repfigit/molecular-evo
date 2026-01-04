@@ -114,7 +114,15 @@ function processDeaths(agents) {
  * Replaces hard culling with gradual scramble competition
  */
 export function getDensityEffects() {
-    const currentPop = state.agents.filter(a => a.alive).length;
+    // Use cached density effects if available (calculated once per tick)
+    if (state.frameCache.lastTick === state.tick && state.frameCache.densityEffects) {
+        return state.frameCache.densityEffects;
+    }
+
+    // Get cached population count (O(1) after first call per tick)
+    const currentPop = state.frameCache.lastTick === state.tick
+        ? state.frameCache.aliveCount
+        : state.agents.filter(a => a.alive).length;
     const density = currentPop / CONFIG.TARGET_POPULATION;
 
     // Metabolism increases at high density (scramble competition)
@@ -127,11 +135,18 @@ export function getDensityEffects() {
     const reproductionPenalty = Math.max(0, density - CONFIG.DENSITY_REPRODUCTION_THRESHOLD) *
                                 CONFIG.DENSITY_REPRODUCTION_PENALTY;
 
-    return {
+    const effects = {
         density,
         metabolismMultiplier,
         reproductionPenalty
     };
+
+    // Cache for this tick
+    if (state.frameCache.lastTick === state.tick) {
+        state.frameCache.densityEffects = effects;
+    }
+
+    return effects;
 }
 
 /**

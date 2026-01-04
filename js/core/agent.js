@@ -8,6 +8,7 @@
 import { CONFIG } from '../config.js';
 import { generateUUID, vec, copy, randomInRect } from '../utils/math.js';
 import { RingBuffer } from '../utils/ringbuffer.js';
+import { markAgentDead } from '../state.js';
 import {
     generateRandomGenome,
     cloneGenome,
@@ -840,10 +841,10 @@ export function getDormancyMetabolismModifier(agent) {
 }
 
 /**
- * Kill an agent
+ * Kill an agent and mark for efficient batch removal
  */
 export function killAgent(agent) {
-    agent.alive = false;
+    markAgentDead(agent);  // O(1) tracking for batch removal
     agent.energy = 0;
 
     // Clear social links

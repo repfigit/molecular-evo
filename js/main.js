@@ -4,7 +4,7 @@
  */
 
 import { CONFIG } from './config.js';
-import { state, resetState, updateStats, recordHistory, ageVisualEvents, addAgent, addAgents, entityIndex } from './state.js';
+import { state, resetState, updateStats, recordHistory, ageVisualEvents, addAgent, addAgents, entityIndex, updateFrameCache, getAliveAgents, getPopDensity, removeDeadAgents, deadAgentIds } from './state.js';
 import { SpatialHash } from './utils/spatial.js';
 
 // Core modules
@@ -250,109 +250,119 @@ class Simulation {
         state.tick++;
         state.deltaTime = dt;
 
+        // === CRITICAL OPTIMIZATION: Cache alive agents ONCE per update ===
+        // This eliminates 8+ redundant filter operations per frame
+        updateFrameCache();
+        const aliveAgents = getAliveAgents();
+        const popDensity = getPopDensity();
+
+        // Cache density effects ONCE (used by multiple agents)
+        const densityEffects = getDensityEffects();
+
+        // Cache environment temperature
+        const envTemp = state.environment ? state.environment.temperature : 0.5;
+
+        // Pre-calculate temperature stress factor (same for all agents)
+        let tempStressFactor = 1.0;
+        if (state.environment) {
+            const optimalTemp = 0.5;
+            const tempDiff = Math.abs(state.environment.temperature - optimalTemp);
+            tempStressFactor = 1 + (tempDiff * 2);
+        }
+
         // Update environment system
         updateEnvironment(dt);
 
         // Update food system
         updateFood(dt);
 
-        // Update physics using the physics system
-        updatePhysics(state.agents, dt);
+        // Update physics using the physics system (only alive agents)
+        updatePhysics(aliveAgents, dt);
 
-        // Process feeding for all agents
-        for (const agent of state.agents) {
-            if (agent.alive) {
-                // Reset temporary bonuses each tick
-                resetBonuses(agent);
+        // Should we update GRN this tick? (every 5 ticks to reduce CPU load)
+        const updateGRN = (state.tick % 5 === 0);
 
-                // Update phenotypic plasticity (temperature acclimation, metabolic adjustment)
-                const envTemp = state.environment ? state.environment.temperature : 0.5;
-                updatePlasticity(agent, envTemp, dt);
+        // Process feeding for all alive agents (using cached list)
+        for (const agent of aliveAgents) {
+            // Reset temporary bonuses each tick
+            resetBonuses(agent);
 
-                // Update behavioral learning (memory decay, learning costs)
-                updateLearning(agent, dt, state.tick);
+            // Update phenotypic plasticity (temperature acclimation, metabolic adjustment)
+            updatePlasticity(agent, envTemp, dt);
 
-                // Update Gene Regulatory Network expression
-                // GRN modulates effective trait values based on environment
-                const popDensity = state.agents.filter(a => a.alive).length / CONFIG.TARGET_POPULATION;
+            // Update behavioral learning (memory decay, learning costs)
+            updateLearning(agent, dt, state.tick);
+
+            // Update Gene Regulatory Network expression (reduced frequency for performance)
+            if (updateGRN) {
                 const grnExpression = calculateGRNExpression(agent, state.environment, popDensity);
                 applyGRNModulation(agent, grnExpression);
+            }
 
-                processFeeding(agent, dt);
+            processFeeding(agent, dt);
 
-                // Age agents
-                agent.age++;
+            // Age agents
+            agent.age++;
 
-                // Apply base metabolism cost, increased by temperature and density stress
-                // Also modified by metabolic plasticity (upregulation/downregulation)
-                // And by Gene Regulatory Network metabolism module expression
-                const plasticityMod = agent.plasticity ? agent.plasticity.metabolic_upregulation : 1.0;
-                const grnMetaMod = agent.grn_metabolism_modifier || 1.0;
-                let metabolismCost = CONFIG.BASE_METABOLISM_COST * plasticityMod * grnMetaMod * dt;
+            // Apply base metabolism cost, increased by temperature and density stress
+            const plasticityMod = agent.plasticity ? agent.plasticity.metabolic_upregulation : 1.0;
+            const grnMetaMod = agent.grn_metabolism_modifier || 1.0;
+            let metabolismCost = CONFIG.BASE_METABOLISM_COST * plasticityMod * grnMetaMod * dt;
 
-                // Temperature affects metabolism - extreme temps cost more energy
-                if (state.environment) {
-                    const optimalTemp = 0.5;
-                    const tempDiff = Math.abs(state.environment.temperature - optimalTemp);
-                    const tempStressFactor = 1 + (tempDiff * 2); // Up to 3x cost at extreme temps
-                    metabolismCost *= tempStressFactor;
-                }
+            // Apply cached temperature stress factor
+            metabolismCost *= tempStressFactor;
 
-                // Density-dependent metabolism (scramble competition)
-                // At high population density, metabolism costs increase
-                const densityEffects = getDensityEffects();
-                metabolismCost *= densityEffects.metabolismMultiplier;
+            // Apply cached density effects (no recalculation per agent)
+            metabolismCost *= densityEffects.metabolismMultiplier;
 
-                agent.energy -= metabolismCost;
+            agent.energy -= metabolismCost;
 
-                // SEXUAL SELECTION: Costly signaling (Zahavian handicap principle)
-                // Display costs drain energy, especially for low-quality individuals
-                const displayCost = calculateDisplayCost(agent, dt);
-                agent.energy -= displayCost;
+            // SEXUAL SELECTION: Costly signaling (Zahavian handicap principle)
+            const displayCost = calculateDisplayCost(agent, dt);
+            agent.energy -= displayCost;
 
-                // Update fitness periodically
-                if (state.tick % 100 === 0) {
-                    calculateFitness(agent);
-                }
+            // Update fitness periodically
+            if (state.tick % 100 === 0) {
+                calculateFitness(agent);
             }
         }
 
         // Process evolution (reproduction, death)
         processEvolution(dt);
 
-        // Update spatial hash (needed for social systems)
-        this.spatialHash.updateAll(state.agents);
+        // Update spatial hash with alive agents only
+        this.spatialHash.updateAll(aliveAgents);
 
-        // Process social systems (if enabled)
+        // Process social systems (if enabled) - use cached alive agents
         if (CONFIG.ENABLE_COMPETITION) {
-            processCompetition(state.agents, this.spatialHash, dt);
+            processCompetition(aliveAgents, this.spatialHash, dt);
         }
         if (CONFIG.ENABLE_COOPERATION) {
-            processCooperation(state.agents, this.spatialHash, dt);
+            processCooperation(aliveAgents, this.spatialHash, dt);
         }
         if (CONFIG.ENABLE_SYMBIOSIS) {
-            processSymbiosis(state.agents, this.spatialHash, dt);
+            processSymbiosis(aliveAgents, this.spatialHash, dt);
         }
 
         // Process predation and scavenging (if enabled)
         if (CONFIG.ENABLE_PREDATION) {
-            processPredation(state.agents, this.spatialHash, dt);
-            processCorpses(state.agents, this.spatialHash, dt);
+            processPredation(aliveAgents, this.spatialHash, dt);
+            processCorpses(aliveAgents, this.spatialHash, dt);
         }
 
         // Process HGT (if enabled)
         if (CONFIG.ENABLE_HGT) {
-            processHGT(state.agents, this.spatialHash, dt);
+            processHGT(aliveAgents, this.spatialHash, dt);
         }
 
         // Process viral system (if enabled)
         if (CONFIG.ENABLE_VIRUSES) {
-            processViral(state.agents, this.spatialHash, dt);
+            processViral(aliveAgents, this.spatialHash, dt);
         }
 
         // Process immunity (if enabled)
         if (CONFIG.ENABLE_IMMUNITY) {
-            processImmunity(state.agents, dt);
+            processImmunity(aliveAgents, dt);
         }
 
         // Process random events and catastrophes (if enabled)
@@ -360,14 +370,15 @@ class Simulation {
             processEvents(dt);
         }
 
-        // Remove dead agents periodically
+        // Remove dead agents periodically using optimized Set-based cleanup
+        // Uses swap-and-pop (O(1) per removal) instead of filter (O(n))
         if (state.tick % 50 === 0) {
-            state.agents = state.agents.filter(a => a.alive);
+            removeDeadAgents();
         }
 
-        // Update sensors for agents
-        for (const agent of state.agents) {
-            if (agent.alive && agent.body.sensors.length > 0) {
+        // Update sensors for alive agents with sensors
+        for (const agent of aliveAgents) {
+            if (agent.body.sensors.length > 0) {
                 const nearbyAgents = this.spatialHash.query(
                     agent.position.x, agent.position.y, 100
                 );

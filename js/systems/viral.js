@@ -10,7 +10,7 @@
  */
 
 import { CONFIG } from '../config.js';
-import { state, logEvent, addViralEvent, addVirus } from '../state.js';
+import { state, logEvent, addViralEvent, addVirus, markAgentDead } from '../state.js';
 import { vec, distance, generateUUID } from '../utils/math.js';
 import {
     createVirus,
@@ -353,8 +353,8 @@ function burstHost(host, virus) {
         virus.offspring_count++;
     }
 
-    // Kill host
-    host.alive = false;
+    // Kill host (tracked for efficient batch removal)
+    markAgentDead(host);
     host.infection = null;
 
     // Release DNA fragments

@@ -9,7 +9,7 @@
  */
 
 import { CONFIG } from '../config.js';
-import { state, logEvent, addVirus } from '../state.js';
+import { state, logEvent, addVirus, markAgentDead } from '../state.js';
 import { createVirus } from '../core/virus.js';
 import { addToxicZone } from './environment.js';
 
@@ -183,7 +183,7 @@ function applyEventStart(event) {
                 if (dist < event.radius) {
                     const damage = event.damage * (1 - dist / event.radius) * 100;
                     agent.energy -= damage;
-                    if (agent.energy <= 0) agent.alive = false;
+                    if (agent.energy <= 0) markAgentDead(agent);
                 }
             }
 

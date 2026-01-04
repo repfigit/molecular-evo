@@ -157,6 +157,96 @@ export class SpatialHash {
     }
 
     /**
+     * Optimized query that returns entities with pre-computed squared distance
+     * Avoids redundant distance calculations in caller code
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @param {number} radius - Search radius
+     * @param {Object} options - Optional settings
+     * @returns {Array} Array of {entity, distSq} objects
+     */
+    queryWithDistSq(x, y, radius, options = {}) {
+        const results = [];
+        const radiusSquared = radius * radius;
+        const cellsToCheck = Math.ceil(radius / this.cellSize);
+        const { cx, cy } = this._getCellCoords(x, y);
+        const excludeEntity = options.exclude || null;
+        const filter = options.filter || null;
+
+        for (let dx = -cellsToCheck; dx <= cellsToCheck; dx++) {
+            for (let dy = -cellsToCheck; dy <= cellsToCheck; dy++) {
+                const key = `${cx + dx},${cy + dy}`;
+                const cell = this.cells.get(key);
+
+                if (cell) {
+                    for (const entity of cell) {
+                        if (entity === excludeEntity) continue;
+
+                        const ex = entity.position.x;
+                        const ey = entity.position.y;
+                        const dxPos = ex - x;
+                        const dyPos = ey - y;
+                        const distSq = dxPos * dxPos + dyPos * dyPos;
+
+                        if (distSq <= radiusSquared) {
+                            if (!filter || filter(entity)) {
+                                results.push({ entity, distSq });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * Batch query: Get neighbors for multiple entities in one pass
+     * More efficient than calling query() for each entity
+     * @param {Array} entities - Entities to find neighbors for
+     * @param {number} radius - Search radius
+     * @returns {Map} entity.id -> array of nearby entities
+     */
+    batchQueryNeighbors(entities, radius) {
+        const neighborMap = new Map();
+        const radiusSquared = radius * radius;
+
+        // Initialize empty arrays for all entities
+        for (const entity of entities) {
+            neighborMap.set(entity.id, []);
+        }
+
+        // Single pass through all cells
+        for (const [key, cell] of this.cells) {
+            const cellArray = [...cell];
+            const cellSize = cellArray.length;
+
+            // Check pairs within this cell
+            for (let i = 0; i < cellSize; i++) {
+                const entityA = cellArray[i];
+                if (!neighborMap.has(entityA.id)) continue;
+
+                for (let j = i + 1; j < cellSize; j++) {
+                    const entityB = cellArray[j];
+                    if (!neighborMap.has(entityB.id)) continue;
+
+                    const dx = entityA.position.x - entityB.position.x;
+                    const dy = entityA.position.y - entityB.position.y;
+                    const distSq = dx * dx + dy * dy;
+
+                    if (distSq <= radiusSquared) {
+                        neighborMap.get(entityA.id).push(entityB);
+                        neighborMap.get(entityB.id).push(entityA);
+                    }
+                }
+            }
+        }
+
+        return neighborMap;
+    }
+
+    /**
      * Query for entities within a radius, returning with distances
      */
     queryWithDistance(x, y, radius, filter = null) {

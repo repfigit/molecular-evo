@@ -16,6 +16,12 @@ export const entityIndex = {
 };
 
 /**
+ * Set of agent IDs marked for removal - O(1) add/check/delete
+ * Agents are added here when they die, then batch-removed during cleanup
+ */
+export const deadAgentIds = new Set();
+
+/**
  * The main simulation state object
  */
 export const state = {
@@ -107,7 +113,17 @@ export const state = {
     // === PERFORMANCE ===
     physicsTime: 0,
     renderTime: 0,
-    systemsTime: 0
+    systemsTime: 0,
+
+    // === CACHED CALCULATIONS (reset each tick) ===
+    // These are populated once per update cycle to avoid redundant computations
+    frameCache: {
+        aliveAgents: null,      // Cached list of alive agents
+        aliveCount: 0,          // Count of alive agents
+        popDensity: 0,          // Population density ratio
+        densityEffects: null,   // Cached density effects object
+        lastTick: -1            // Tick when cache was last updated
+    }
 };
 
 /**
@@ -189,10 +205,22 @@ export function resetState() {
     state.renderTime = 0;
     state.systemsTime = 0;
 
+    // Reset frame cache
+    state.frameCache = {
+        aliveAgents: null,
+        aliveCount: 0,
+        popDensity: 0,
+        densityEffects: null,
+        lastTick: -1
+    };
+
     // Clear entity indices
     entityIndex.agents.clear();
     entityIndex.viruses.clear();
     entityIndex.dnaFragments.clear();
+
+    // Clear dead agent tracking
+    deadAgentIds.clear();
 }
 
 /**
@@ -546,29 +574,64 @@ export function rebuildEntityIndices() {
 }
 
 /**
+ * Mark an agent as dead for efficient batch removal - O(1)
+ * Call this when an agent dies instead of immediately removing it
+ */
+export function markAgentDead(agent) {
+    if (agent && agent.id) {
+        agent.alive = false;
+        deadAgentIds.add(agent.id);
+    }
+}
+
+/**
+ * Check if an agent is marked for removal - O(1)
+ */
+export function isAgentMarkedDead(agentId) {
+    return deadAgentIds.has(agentId);
+}
+
+/**
  * Remove dead agents from the simulation
+ * Uses the deadAgentIds Set for O(1) lookup instead of filtering entire array
  */
 export function removeDeadAgents() {
-    // Filter out dead agents
-    const deadAgents = state.agents.filter(a => !a.alive || a.energy <= CONFIG.DEATH_ENERGY_THRESHOLD);
+    // If we have tracked dead agents, use that Set (O(k) where k = dead count)
+    // Otherwise fall back to scanning (for agents that died without markAgentDead)
+    const deadAgents = [];
 
-    // Remove dead agents from index
-    for (const agent of deadAgents) {
-        entityIndex.agents.delete(agent.id);
+    // Scan for any agents marked dead OR that should be dead
+    // This handles both tracked deaths and untracked ones
+    for (let i = state.agents.length - 1; i >= 0; i--) {
+        const agent = state.agents[i];
+        const isDead = deadAgentIds.has(agent.id) ||
+                       !agent.alive ||
+                       agent.energy <= CONFIG.DEATH_ENERGY_THRESHOLD;
+
+        if (isDead) {
+            deadAgents.push(agent);
+            entityIndex.agents.delete(agent.id);
+            // Swap with last element and pop - O(1) instead of splice O(n)
+            state.agents[i] = state.agents[state.agents.length - 1];
+            state.agents.pop();
+        }
     }
 
-    // Remove from cooperative links
-    state.cooperativeLinks = state.cooperativeLinks.filter(link =>
-        link.agent_a.alive && link.agent_b.alive
-    );
+    // Clear the dead agent tracking set
+    deadAgentIds.clear();
 
-    // Remove from symbiotic pairs
-    state.symbioticPairs = state.symbioticPairs.filter(pair =>
-        pair.host.alive && pair.symbiont.alive
-    );
+    // Only filter relationships if we actually removed agents
+    if (deadAgents.length > 0) {
+        // Remove from cooperative links
+        state.cooperativeLinks = state.cooperativeLinks.filter(link =>
+            link.agent_a.alive && link.agent_b.alive
+        );
 
-    // Update agents list
-    state.agents = state.agents.filter(a => a.alive && a.energy > CONFIG.DEATH_ENERGY_THRESHOLD);
+        // Remove from symbiotic pairs
+        state.symbioticPairs = state.symbioticPairs.filter(pair =>
+            pair.host.alive && pair.symbiont.alive
+        );
+    }
 
     return deadAgents;
 }
@@ -610,4 +673,57 @@ export function ageVisualEvents() {
         e.age++;
         return e.age < (e.duration || maxAge);
     });
+}
+
+// ============================================================================
+// FRAME CACHE HELPERS - Avoid redundant calculations each update cycle
+// ============================================================================
+
+/**
+ * Update the frame cache with alive agents - call ONCE at start of update()
+ * This eliminates 8+ redundant filter operations per frame
+ */
+export function updateFrameCache() {
+    if (state.frameCache.lastTick === state.tick) {
+        return; // Already updated this tick
+    }
+
+    const aliveAgents = state.agents.filter(a => a.alive);
+    const aliveCount = aliveAgents.length;
+
+    state.frameCache.aliveAgents = aliveAgents;
+    state.frameCache.aliveCount = aliveCount;
+    state.frameCache.popDensity = aliveCount / CONFIG.TARGET_POPULATION;
+    state.frameCache.densityEffects = null; // Will be calculated on demand
+    state.frameCache.lastTick = state.tick;
+}
+
+/**
+ * Get cached alive agents - O(1) after first call per tick
+ */
+export function getAliveAgents() {
+    if (state.frameCache.lastTick !== state.tick) {
+        updateFrameCache();
+    }
+    return state.frameCache.aliveAgents;
+}
+
+/**
+ * Get cached alive count - O(1)
+ */
+export function getAliveCount() {
+    if (state.frameCache.lastTick !== state.tick) {
+        updateFrameCache();
+    }
+    return state.frameCache.aliveCount;
+}
+
+/**
+ * Get cached population density - O(1)
+ */
+export function getPopDensity() {
+    if (state.frameCache.lastTick !== state.tick) {
+        updateFrameCache();
+    }
+    return state.frameCache.popDensity;
 }
