@@ -7,6 +7,7 @@
 
 import { CONFIG } from '../config.js';
 import { generateUUID, vec, copy, randomInRect } from '../utils/math.js';
+import { RingBuffer } from '../utils/ringbuffer.js';
 import {
     generateRandomGenome,
     cloneGenome,
@@ -91,7 +92,7 @@ export function createAgent(genome, options = {}) {
         plasticity: {
             acclimated_temperature: 0.5,      // Current temperature adaptation
             metabolic_upregulation: 1.0,      // Adjusts based on food availability
-            recent_energy_intake: [],         // Rolling buffer of recent feeding
+            recent_energy_intake: new RingBuffer(100),  // Fixed-size rolling buffer - O(1) push
             stress_level: 0                   // Accumulated environmental stress
         },
 
@@ -343,7 +344,7 @@ export function updatePlasticity(agent, envTemperature, dt) {
         agent.plasticity = {
             acclimated_temperature: 0.5,
             metabolic_upregulation: 1.0,
-            recent_energy_intake: [],
+            recent_energy_intake: new RingBuffer(100),
             stress_level: 0
         };
     }
@@ -365,18 +366,11 @@ export function updatePlasticity(agent, envTemperature, dt) {
     const tempStress = Math.abs(envTemperature - agent.plasticity.acclimated_temperature);
 
     // === METABOLIC PLASTICITY ===
-    // Track recent energy intake
+    // Track recent energy intake using RingBuffer (no manual trimming needed - O(1))
     const recentIntake = agent.plasticity.recent_energy_intake;
 
-    // Keep only last 100 entries
-    while (recentIntake.length > 100) {
-        recentIntake.shift();
-    }
-
-    // Calculate average recent intake
-    const avgIntake = recentIntake.length > 0
-        ? recentIntake.reduce((a, b) => a + b, 0) / recentIntake.length
-        : 0;
+    // Calculate average recent intake - RingBuffer handles bounded size automatically
+    const avgIntake = recentIntake.average();
 
     // Adjust metabolic rate based on food availability
     if (avgIntake < 0.5) {

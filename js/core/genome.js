@@ -71,7 +71,17 @@ export function createGenome(options = {}) {
         mutagenesis: options.mutagenesis || createDefaultMutagenesis(),
 
         // === ANTAGONISTIC PLEIOTROPY (Life History Trade-offs) ===
-        pleiotropy: options.pleiotropy || createDefaultPleiotropy()
+        pleiotropy: options.pleiotropy || createDefaultPleiotropy(),
+
+        // === IMMUNITY SYSTEM ===
+        // Innate immunity (non-specific, fast response)
+        innate_immunity: options.innate_immunity || createDefaultInnateImmunity(),
+
+        // MHC diversity (pathogen recognition, heterozygote advantage)
+        mhc: options.mhc || createDefaultMHC(),
+
+        // CRISPR adaptive immunity (specific, memory-based)
+        crispr: options.crispr || createDefaultCRISPR()
     };
 
     return genome;
@@ -759,6 +769,89 @@ export function createDefaultPleiotropy() {
 
         // Age at which trade-offs begin to manifest
         trade_off_onset_age: randomInt(300, 600)
+    };
+}
+
+/**
+ * Create default innate immunity (non-specific, fast response)
+ * Trade-offs: high investment risks autoimmunity, costs energy
+ */
+export function createDefaultInnateImmunity() {
+    return {
+        // Baseline non-specific resistance to all pathogens
+        baseline_resistance: randomRange(0.1, 0.3),
+
+        // Inflammation state (dynamically updated)
+        inflammation_active: false,
+        inflammation_level: 0,
+
+        // Fever capability (increases resistance but causes self-damage)
+        fever_capable: randomBool(0.7),
+        fever_active: false,
+        fever_intensity: 0,
+
+        // Complement system efficiency (pathogen opsonization)
+        complement_efficiency: randomRange(0.2, 0.5),
+
+        // Pattern recognition receptors (PAMPs - Pathogen-Associated Molecular Patterns)
+        pattern_receptors: {
+            lipid: randomRange(0.2, 0.6),        // Bacterial cell walls
+            flagellin: randomRange(0.2, 0.6),    // Bacterial flagella
+            dsRNA: randomRange(0.2, 0.6),        // Viral genetic material
+            peptidoglycan: randomRange(0.2, 0.6) // Bacterial structure
+        },
+
+        // Immune investment level (trade-off with growth/reproduction)
+        // High investment = better immunity but higher autoimmunity risk
+        investment_level: randomRange(0.3, 0.7)
+    };
+}
+
+/**
+ * Create default MHC (Major Histocompatibility Complex) for pathogen recognition
+ * Heterozygote advantage: different alleles provide broader pathogen coverage
+ */
+export function createDefaultMHC() {
+    const loci = [];
+    const MHC_LOCI_COUNT = 2;
+    const MHC_ALLELE_RANGE = 1000;
+
+    for (let i = 0; i < MHC_LOCI_COUNT; i++) {
+        loci.push({
+            allele_a: randomInt(0, MHC_ALLELE_RANGE),
+            allele_b: randomInt(0, MHC_ALLELE_RANGE)
+        });
+    }
+
+    // Calculate heterozygosity (diversity)
+    let heteroCount = 0;
+    for (const locus of loci) {
+        if (locus.allele_a !== locus.allele_b) {
+            heteroCount++;
+        }
+    }
+    const heterozygosity = heteroCount / loci.length;
+
+    return {
+        loci,
+        heterozygosity
+    };
+}
+
+/**
+ * Create default CRISPR adaptive immunity system
+ * Memory-based specific immunity with affinity maturation
+ */
+export function createDefaultCRISPR() {
+    return {
+        // Whether CRISPR system is active
+        active: randomBool(0.3), // 30% chance to have active CRISPR
+
+        // Efficiency of memory formation and response
+        efficiency: randomRange(0.2, 0.6),
+
+        // Memory storage (populated during infection)
+        memory: []
     };
 }
 
@@ -3380,4 +3473,590 @@ export function mutateGRN(grn) {
     }
 
     return grn;
+}
+
+// ============================================================================
+// GENETIC ASSIMILATION (BALDWIN EFFECT)
+// ============================================================================
+// Plastic responses that persist for multiple generations can become
+// genetically fixed, reducing the need for plasticity but maintaining
+// the phenotype.
+
+/**
+ * Create default genetic assimilation tracking
+ */
+export function createDefaultAssimilation() {
+    return {
+        // Track plastic responses that have been expressed repeatedly
+        plastic_history: {},  // trait_name -> { generations_expressed, total_expression }
+
+        // Rate at which plastic responses become genetic
+        assimilation_rate: randomRange(0.01, 0.1),
+
+        // Traits that have been assimilated (no longer need plasticity)
+        assimilated_traits: [],
+
+        // Plasticity cost savings from assimilation
+        plasticity_cost_reduction: 0
+    };
+}
+
+/**
+ * Record a plastic response for potential assimilation
+ * @param {Object} genome - The genome
+ * @param {string} traitName - Name of the trait that responded plastically
+ * @param {number} expressionLevel - Level of plastic expression (0-1)
+ */
+export function recordPlasticResponse(genome, traitName, expressionLevel) {
+    if (!genome.assimilation) {
+        genome.assimilation = createDefaultAssimilation();
+    }
+
+    if (!genome.assimilation.plastic_history[traitName]) {
+        genome.assimilation.plastic_history[traitName] = {
+            generations_expressed: 0,
+            total_expression: 0,
+            first_tick: state?.tick || 0
+        };
+    }
+
+    const history = genome.assimilation.plastic_history[traitName];
+    history.generations_expressed++;
+    history.total_expression += expressionLevel;
+}
+
+/**
+ * Check for genetic assimilation during reproduction
+ * If a plastic response has been expressed for multiple generations,
+ * it may become genetically fixed
+ *
+ * @param {Object} parentGenome - Parent's genome
+ * @param {Object} childGenome - Child's genome (will be modified)
+ * @returns {Object} List of newly assimilated traits
+ */
+export function checkGeneticAssimilation(parentGenome, childGenome) {
+    if (!parentGenome.assimilation) return { assimilated: [] };
+
+    const assimilated = [];
+    const history = parentGenome.assimilation.plastic_history;
+
+    for (const [traitName, data] of Object.entries(history)) {
+        // Need at least 5 generations of expression
+        if (data.generations_expressed < 5) continue;
+
+        // Need consistent expression (high average)
+        const avgExpression = data.total_expression / data.generations_expressed;
+        if (avgExpression < 0.5) continue;
+
+        // Probability of assimilation increases with generations and expression level
+        const assimilationProb = parentGenome.assimilation.assimilation_rate *
+            (data.generations_expressed / 10) *
+            avgExpression;
+
+        if (Math.random() < assimilationProb) {
+            // ASSIMILATE: Make the plastic response genetic
+            applyAssimilation(childGenome, traitName, avgExpression);
+            assimilated.push(traitName);
+        }
+    }
+
+    // Copy and reset history for child
+    childGenome.assimilation = createDefaultAssimilation();
+    childGenome.assimilation.assimilation_rate = parentGenome.assimilation.assimilation_rate;
+    childGenome.assimilation.assimilated_traits = [
+        ...parentGenome.assimilation.assimilated_traits,
+        ...assimilated
+    ];
+
+    return { assimilated };
+}
+
+/**
+ * Apply genetic assimilation to a specific trait
+ */
+function applyAssimilation(genome, traitName, expressionLevel) {
+    // Modify the genetic value of the trait to match the plastic response
+    switch (traitName) {
+        case 'heat_tolerance':
+        case 'cold_tolerance':
+            if (genome.metabolism?.plasticity) {
+                // Baseline shifts toward plastic expression, plasticity reduces
+                genome.metabolism.efficiency = clamp(
+                    (genome.metabolism.efficiency || 0.5) + expressionLevel * 0.1,
+                    0.1, 1
+                );
+                genome.metabolism.plasticity.plasticity_range *= 0.8;
+            }
+            break;
+
+        case 'metabolic_efficiency':
+            if (genome.metabolism) {
+                genome.metabolism.efficiency = clamp(
+                    (genome.metabolism.efficiency || 0.5) + expressionLevel * 0.15,
+                    0.1, 1
+                );
+            }
+            break;
+
+        case 'social_behavior':
+            if (genome.social) {
+                genome.social.cooperation_willingness = clamp(
+                    (genome.social.cooperation_willingness || 0.5) + expressionLevel * 0.1,
+                    0, 1
+                );
+            }
+            break;
+
+        default:
+            // Generic trait assimilation
+            break;
+    }
+
+    // Mark trait as assimilated
+    if (!genome.assimilation) genome.assimilation = createDefaultAssimilation();
+    if (!genome.assimilation.assimilated_traits.includes(traitName)) {
+        genome.assimilation.assimilated_traits.push(traitName);
+    }
+
+    // Assimilated traits cost less plasticity energy
+    genome.assimilation.plasticity_cost_reduction += 0.05;
+}
+
+/**
+ * Check if a trait has been assimilated (no longer needs plasticity)
+ */
+export function isTraitAssimilated(genome, traitName) {
+    return genome.assimilation?.assimilated_traits?.includes(traitName) || false;
+}
+
+// ============================================================================
+// ALLELIC DOMINANCE MODEL
+// ============================================================================
+// Implements diploid-like inheritance with dominance relationships
+// h = 0: fully recessive
+// h = 0.5: additive (codominant)
+// h = 1: fully dominant
+// h > 1: overdominance (heterozygote advantage)
+
+/**
+ * Create default allelic structure for a trait
+ */
+export function createAllelicTrait(value) {
+    return {
+        allele_a: value + randomRange(-0.1, 0.1),  // First allele
+        allele_b: value + randomRange(-0.1, 0.1),  // Second allele
+        dominance_coefficient: randomRange(0.3, 0.7),  // h value
+        is_overdominant: randomBool(0.1)  // 10% chance of heterozygote advantage
+    };
+}
+
+/**
+ * Calculate phenotypic value from two alleles considering dominance
+ * @param {number} alleleA - Value of first allele
+ * @param {number} alleleB - Value of second allele
+ * @param {number} h - Dominance coefficient (0=recessive, 0.5=additive, 1=dominant)
+ * @param {boolean} overdominant - Whether heterozygotes have advantage
+ * @returns {number} Phenotypic value
+ */
+export function calculatePhenotype(alleleA, alleleB, h = 0.5, overdominant = false) {
+    // Check for heterozygosity
+    const isHeterozygous = Math.abs(alleleA - alleleB) > 0.05;
+
+    if (overdominant && isHeterozygous) {
+        // Heterozygote advantage: phenotype exceeds both homozygotes
+        const maxAllele = Math.max(alleleA, alleleB);
+        return maxAllele * 1.1;  // 10% bonus for heterozygotes
+    }
+
+    // Standard dominance calculation
+    // Phenotype = h * dominant_allele + (1-h) * recessive_allele
+    if (alleleA >= alleleB) {
+        // alleleA is dominant
+        return h * alleleA + (1 - h) * alleleB;
+    } else {
+        // alleleB is dominant
+        return h * alleleB + (1 - h) * alleleA;
+    }
+}
+
+/**
+ * Inherit allelic trait from two parents (Mendelian inheritance)
+ */
+export function inheritAllelicTrait(traitA, traitB) {
+    if (!traitA || !traitB) {
+        return traitA || traitB || createAllelicTrait(0.5);
+    }
+
+    // Each parent contributes one allele randomly
+    const inheritedA = Math.random() < 0.5 ? traitA.allele_a : traitA.allele_b;
+    const inheritedB = Math.random() < 0.5 ? traitB.allele_a : traitB.allele_b;
+
+    // Apply small mutation
+    const mutatedA = Math.random() < 0.05
+        ? clamp(inheritedA + randomRange(-0.1, 0.1), 0, 1)
+        : inheritedA;
+    const mutatedB = Math.random() < 0.05
+        ? clamp(inheritedB + randomRange(-0.1, 0.1), 0, 1)
+        : inheritedB;
+
+    // Inherit dominance (with small variation)
+    const avgDominance = (traitA.dominance_coefficient + traitB.dominance_coefficient) / 2;
+    const newDominance = clamp(avgDominance + randomRange(-0.05, 0.05), 0, 1.2);
+
+    return {
+        allele_a: mutatedA,
+        allele_b: mutatedB,
+        dominance_coefficient: newDominance,
+        is_overdominant: traitA.is_overdominant || traitB.is_overdominant || randomBool(0.02)
+    };
+}
+
+/**
+ * Calculate inbreeding depression from allelic structure
+ * Inbreeding exposes recessive deleterious alleles
+ */
+export function calculateAllelicInbreedingPenalty(genome, inbreedingCoef) {
+    if (inbreedingCoef < 0.05) return 0;
+
+    // Count homozygous loci (where alleles are similar)
+    let homozygousCount = 0;
+    let totalLoci = 0;
+
+    // Check metabolism alleles if present
+    if (genome.metabolism?.allelic_efficiency) {
+        totalLoci++;
+        const trait = genome.metabolism.allelic_efficiency;
+        if (Math.abs(trait.allele_a - trait.allele_b) < 0.1) {
+            homozygousCount++;
+        }
+    }
+
+    // Inbreeding increases homozygosity
+    const effectiveHomozygosity = homozygousCount / (totalLoci || 1) + inbreedingCoef * 0.5;
+
+    // Penalty from recessive allele exposure
+    return effectiveHomozygosity * 0.1;
+}
+
+// ============================================================================
+// SEXUAL CONFLICT
+// ============================================================================
+// Males and females often have conflicting optimal strategies for reproduction
+// This creates an evolutionary arms race between the sexes
+
+/**
+ * Create default sexual conflict traits
+ */
+export function createDefaultSexualConflict() {
+    return {
+        // Mating role (affects strategy)
+        mating_role: randomBool(0.5) ? 'chooser' : 'displayer',
+
+        // Investment strategy
+        preferred_investment: randomRange(0.2, 0.8),  // How much THIS individual wants to invest
+
+        // Manipulation ability (ability to influence partner's investment)
+        manipulation_ability: randomRange(0.1, 0.5),
+
+        // Resistance to manipulation
+        manipulation_resistance: randomRange(0.1, 0.5),
+
+        // Conflict history affects future interactions
+        conflict_experience: 0,
+
+        // Coercion traits (ability to force mating)
+        coercion_ability: randomRange(0, 0.3),
+        coercion_resistance: randomRange(0.2, 0.6)
+    };
+}
+
+/**
+ * Resolve parental investment conflict between two parents
+ * @param {Object} parent1 - First parent
+ * @param {Object} parent2 - Second parent
+ * @returns {Object} Resolved investment and conflict costs
+ */
+export function resolveParentalConflict(parent1, parent2) {
+    const conflict1 = parent1.genome.sexual_conflict || createDefaultSexualConflict();
+    const conflict2 = parent2.genome.sexual_conflict || createDefaultSexualConflict();
+
+    // Calculate effective manipulation
+    const manipulation1 = conflict1.manipulation_ability * (1 - conflict2.manipulation_resistance);
+    const manipulation2 = conflict2.manipulation_ability * (1 - conflict1.manipulation_resistance);
+
+    // Each parent tries to shift investment toward their preference
+    const weight1 = 0.5 + manipulation1 - manipulation2;
+    const weight2 = 1 - weight1;
+
+    // Effective investment is weighted average based on manipulation success
+    const effectiveInvestment = clamp(
+        conflict1.preferred_investment * weight1 +
+        conflict2.preferred_investment * weight2,
+        0.1, 0.9
+    );
+
+    // Conflict cost (energy wasted on manipulation/resistance)
+    const conflictCost = Math.abs(conflict1.preferred_investment - conflict2.preferred_investment) *
+        (conflict1.manipulation_ability + conflict2.manipulation_ability) * 10;
+
+    return {
+        investment: effectiveInvestment,
+        conflictCost,
+        winner: weight1 > 0.6 ? 'parent1' : weight2 > 0.6 ? 'parent2' : 'tie',
+        manipulationDiff: manipulation1 - manipulation2
+    };
+}
+
+/**
+ * Check for sexual coercion (forced mating attempt)
+ */
+export function checkSexualCoercion(aggressor, target) {
+    const aggressorConflict = aggressor.genome.sexual_conflict || createDefaultSexualConflict();
+    const targetConflict = target.genome.sexual_conflict || createDefaultSexualConflict();
+
+    // Coercion success depends on ability vs resistance
+    const coercionSuccess = aggressorConflict.coercion_ability > targetConflict.coercion_resistance;
+
+    // Coercion always has costs for both parties
+    const aggressorCost = aggressorConflict.coercion_ability * 5;
+    const targetCost = coercionSuccess
+        ? (1 - targetConflict.coercion_resistance) * 10
+        : targetConflict.coercion_resistance * 3;
+
+    return {
+        success: coercionSuccess,
+        aggressorCost,
+        targetCost,
+        // Failed coercion attempts can increase target's resistance evolution
+        resistanceSelection: coercionSuccess ? 0.1 : 0
+    };
+}
+
+/**
+ * Inherit sexual conflict traits from parents
+ */
+export function inheritSexualConflict(conflict1, conflict2) {
+    if (!conflict1 && !conflict2) return createDefaultSexualConflict();
+    if (!conflict1) return { ...conflict2, conflict_experience: 0 };
+    if (!conflict2) return { ...conflict1, conflict_experience: 0 };
+
+    return {
+        mating_role: randomBool(0.5) ? conflict1.mating_role : conflict2.mating_role,
+
+        preferred_investment: clamp(
+            (conflict1.preferred_investment + conflict2.preferred_investment) / 2 +
+            randomRange(-0.1, 0.1),
+            0.1, 0.9
+        ),
+
+        manipulation_ability: clamp(
+            (conflict1.manipulation_ability + conflict2.manipulation_ability) / 2 +
+            randomRange(-0.05, 0.05),
+            0, 1
+        ),
+
+        manipulation_resistance: clamp(
+            (conflict1.manipulation_resistance + conflict2.manipulation_resistance) / 2 +
+            randomRange(-0.05, 0.05),
+            0, 1
+        ),
+
+        conflict_experience: 0,
+
+        coercion_ability: clamp(
+            (conflict1.coercion_ability + conflict2.coercion_ability) / 2 +
+            randomRange(-0.03, 0.03),
+            0, 0.5
+        ),
+
+        coercion_resistance: clamp(
+            (conflict1.coercion_resistance + conflict2.coercion_resistance) / 2 +
+            randomRange(-0.05, 0.05),
+            0, 1
+        )
+    };
+}
+
+// ============================================================================
+// EVOLVABLE EVOLVABILITY
+// ============================================================================
+// The capacity to evolve (evolvability) is itself an evolvable trait
+// This includes modularity, mutation rates, and developmental plasticity
+
+/**
+ * Create default evolvability metrics
+ */
+export function createDefaultEvolvability() {
+    return {
+        // Genome modularity (higher = more independent traits)
+        modularity: randomRange(0.3, 0.7),
+
+        // Robustness to mutations (higher = more mutations are neutral)
+        mutational_robustness: randomRange(0.3, 0.7),
+
+        // Propensity to generate phenotypic variation
+        variability: randomRange(0.3, 0.7),
+
+        // Ability to explore phenotype space
+        exploration_bias: randomRange(0.3, 0.7),
+
+        // Cost of maintaining high evolvability
+        evolvability_cost: 0.02
+    };
+}
+
+/**
+ * Calculate genome modularity score
+ * Higher modularity means traits can evolve more independently
+ */
+export function calculateGenomeModularity(genome) {
+    let modularity = 0;
+
+    // Check linkage map for trait independence
+    if (genome.linkage_map) {
+        // More linkage groups = more modularity
+        const groupCount = genome.linkage_map.groups?.length || 1;
+        modularity += groupCount / 10;
+
+        // Higher recombination rates = more modularity
+        const avgRecomb = genome.linkage_map.global_recombination_modifier || 0.5;
+        modularity += avgRecomb * 0.3;
+    }
+
+    // Check GRN for modularity
+    if (genome.grn) {
+        // More modules = more modularity
+        modularity += (genome.grn.modules?.length || 1) / 10;
+
+        // Lower connection density = more modularity
+        const connectionDensity = (genome.grn.connections?.length || 0) /
+            Math.max(1, (genome.grn.modules?.length || 1) * 2);
+        modularity += (1 - connectionDensity) * 0.2;
+    }
+
+    return clamp(modularity, 0, 1);
+}
+
+/**
+ * Calculate evolvability score for a genome
+ * Evolvability = ability to generate adaptive variation
+ */
+export function calculateEvolvability(genome) {
+    const evolvability = genome.evolvability || createDefaultEvolvability();
+
+    // Modularity contributes to evolvability
+    const modularity = calculateGenomeModularity(genome);
+
+    // Plasticity contributes (allows exploration without commitment)
+    const plasticity = genome.metabolism?.plasticity?.plasticity_range || 0.3;
+
+    // Mutation rate contributes (more mutations = more variation)
+    const mutationRate = genome.mutagenesis?.base_mutation_modifier || 1;
+    const normalizedMutRate = clamp(mutationRate / 2, 0, 1);
+
+    // Genetic diversity contributes (more allelic variation)
+    const geneticDiversity = genome.mhc?.heterozygosity || 0.5;
+
+    // Calculate weighted evolvability score
+    const score = (
+        modularity * 0.3 +
+        plasticity * 0.25 +
+        normalizedMutRate * 0.2 +
+        geneticDiversity * 0.15 +
+        evolvability.variability * 0.1
+    );
+
+    return {
+        score,
+        modularity,
+        plasticity,
+        mutationRate: normalizedMutRate,
+        geneticDiversity,
+        variability: evolvability.variability
+    };
+}
+
+/**
+ * Get evolvability fitness bonus/penalty
+ * High evolvability is good in changing environments, costly in stable ones
+ */
+export function getEvolvabilityFitness(genome, environmentStability = 0.5) {
+    const evolvability = calculateEvolvability(genome);
+    const evolvabilityTraits = genome.evolvability || createDefaultEvolvability();
+
+    // Cost of maintaining evolvability
+    const cost = evolvabilityTraits.evolvability_cost * evolvability.score;
+
+    // Benefit depends on environmental change rate
+    // Changing environments favor evolvability
+    const changeRate = 1 - environmentStability;
+    const benefit = evolvability.score * changeRate * 0.1;
+
+    return {
+        fitness: benefit - cost,
+        cost,
+        benefit,
+        evolvabilityScore: evolvability.score
+    };
+}
+
+/**
+ * Mutate evolvability traits
+ */
+export function mutateEvolvability(evolvability) {
+    if (!evolvability) return createDefaultEvolvability();
+
+    return {
+        modularity: clamp(
+            evolvability.modularity + randomRange(-0.05, 0.05),
+            0.1, 0.9
+        ),
+        mutational_robustness: clamp(
+            evolvability.mutational_robustness + randomRange(-0.05, 0.05),
+            0.1, 0.9
+        ),
+        variability: clamp(
+            evolvability.variability + randomRange(-0.05, 0.05),
+            0.1, 0.9
+        ),
+        exploration_bias: clamp(
+            evolvability.exploration_bias + randomRange(-0.05, 0.05),
+            0.1, 0.9
+        ),
+        evolvability_cost: clamp(
+            evolvability.evolvability_cost + randomRange(-0.005, 0.005),
+            0.01, 0.1
+        )
+    };
+}
+
+/**
+ * Inherit evolvability traits
+ */
+export function inheritEvolvability(evolvA, evolvB) {
+    if (!evolvA && !evolvB) return createDefaultEvolvability();
+    if (!evolvA) return mutateEvolvability(evolvB);
+    if (!evolvB) return mutateEvolvability(evolvA);
+
+    return {
+        modularity: clamp(
+            (evolvA.modularity + evolvB.modularity) / 2 + randomRange(-0.05, 0.05),
+            0.1, 0.9
+        ),
+        mutational_robustness: clamp(
+            (evolvA.mutational_robustness + evolvB.mutational_robustness) / 2 +
+            randomRange(-0.05, 0.05),
+            0.1, 0.9
+        ),
+        variability: clamp(
+            (evolvA.variability + evolvB.variability) / 2 + randomRange(-0.05, 0.05),
+            0.1, 0.9
+        ),
+        exploration_bias: clamp(
+            (evolvA.exploration_bias + evolvB.exploration_bias) / 2 +
+            randomRange(-0.05, 0.05),
+            0.1, 0.9
+        ),
+        evolvability_cost: (evolvA.evolvability_cost + evolvB.evolvability_cost) / 2
+    };
 }

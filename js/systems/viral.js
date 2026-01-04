@@ -10,7 +10,7 @@
  */
 
 import { CONFIG } from '../config.js';
-import { state, logEvent, addViralEvent } from '../state.js';
+import { state, logEvent, addViralEvent, addVirus } from '../state.js';
 import { vec, distance, generateUUID } from '../utils/math.js';
 import {
     createVirus,
@@ -349,7 +349,7 @@ function burstHost(host, virus) {
             }
         }
 
-        state.viruses.push(newVirus);
+        addVirus(newVirus);
         virus.offspring_count++;
     }
 
@@ -483,7 +483,7 @@ function spawnNewViruses(dt) {
         }
     });
 
-    state.viruses.push(virus);
+    addVirus(virus);
 }
 
 /**
@@ -491,8 +491,9 @@ function spawnNewViruses(dt) {
  */
 export function initViruses(count = CONFIG.INITIAL_VIRUS_COUNT) {
     state.viruses = [];
+    // Note: entityIndex.viruses is cleared in resetState(), called before this
     for (let i = 0; i < count; i++) {
-        state.viruses.push(createVirus({
+        addVirus(createVirus({
             position: {
                 x: Math.random() * CONFIG.WORLD_WIDTH,
                 y: Math.random() * CONFIG.WORLD_HEIGHT

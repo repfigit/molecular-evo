@@ -519,3 +519,299 @@ export function getDominantAgent(x, y, radius, spatialHash) {
         return currentPower > dominantPower ? current : dominant;
     });
 }
+
+// ============================================================================
+// ENHANCED CHARACTER DISPLACEMENT
+// ============================================================================
+// When two species compete for the same resource, selection favors divergence
+// This is a major driver of adaptive radiation (Darwin's finches, etc.)
+
+// Track displacement dynamics per species pair
+const displacementDynamics = new Map();  // "speciesA:speciesB" -> dynamics object
+
+/**
+ * Calculate comprehensive character displacement between two species
+ * Returns detailed divergence metrics and selection pressures
+ */
+export function analyzeCharacterDisplacement(speciesA, speciesB, agents) {
+    const membersA = agents.filter(a => a.alive && a.genome.species_marker === speciesA);
+    const membersB = agents.filter(a => a.alive && a.genome.species_marker === speciesB);
+
+    if (membersA.length < 3 || membersB.length < 3) {
+        return null;
+    }
+
+    // Calculate trait means for each species
+    const traitsA = calculateTraitMeans(membersA);
+    const traitsB = calculateTraitMeans(membersB);
+
+    // Calculate niche overlap using Pianka's index
+    const nicheOverlap = calculatePiankasOverlap(traitsA, traitsB);
+
+    // Calculate character divergence (how different the species are)
+    const divergence = calculateTraitDivergence(traitsA, traitsB);
+
+    // Determine selection pressures
+    const selectionPressure = calculateDisplacementSelection(traitsA, traitsB, nicheOverlap);
+
+    const key = `${speciesA}:${speciesB}`;
+    const dynamics = {
+        speciesA,
+        speciesB,
+        nicheOverlap,
+        divergence,
+        selectionPressure,
+        tick: state.tick,
+        coexistenceProbability: 1 - Math.pow(nicheOverlap, 2),
+        displacementRate: nicheOverlap > 0.7 ? (nicheOverlap - 0.7) * 0.5 : 0
+    };
+
+    displacementDynamics.set(key, dynamics);
+
+    return dynamics;
+}
+
+/**
+ * Calculate trait means for a group of agents
+ */
+function calculateTraitMeans(members) {
+    const n = members.length;
+
+    return {
+        // Body size
+        size: members.reduce((sum, a) => sum + (a.genome.nodes?.length || 5), 0) / n,
+
+        // Food niche
+        foodPreference: calculateFoodPreferenceVector(members),
+
+        // Activity level
+        activity: members.reduce((sum, a) =>
+            sum + (a.genome.social?.competition?.aggression || 0.5), 0) / n,
+
+        // Metabolic efficiency
+        efficiency: members.reduce((sum, a) =>
+            sum + (a.genome.metabolism?.efficiency || 0.5), 0) / n,
+
+        // Spatial niche (depth preference based on average y position)
+        depthPreference: members.reduce((sum, a) =>
+            sum + a.position.y / CONFIG.WORLD_HEIGHT, 0) / n
+    };
+}
+
+/**
+ * Calculate food preference vector (distribution across food types)
+ */
+function calculateFoodPreferenceVector(members) {
+    const foodCounts = {
+        chemical_A: 0,
+        chemical_B: 0,
+        light: 0,
+        organic_matter: 0
+    };
+
+    for (const member of members) {
+        const primary = member.genome.metabolism?.primary_food || 'chemical_A';
+        const secondary = member.genome.metabolism?.secondary_food;
+
+        foodCounts[primary] = (foodCounts[primary] || 0) + 1;
+        if (secondary) {
+            foodCounts[secondary] = (foodCounts[secondary] || 0) + 0.5;
+        }
+    }
+
+    // Normalize
+    const total = Object.values(foodCounts).reduce((a, b) => a + b, 0);
+    for (const key in foodCounts) {
+        foodCounts[key] /= total || 1;
+    }
+
+    return foodCounts;
+}
+
+/**
+ * Calculate Pianka's niche overlap index
+ * Returns 0 (no overlap) to 1 (complete overlap)
+ */
+function calculatePiankasOverlap(traitsA, traitsB) {
+    // Food niche overlap (most important)
+    let foodOverlap = 0;
+    let sumA = 0, sumB = 0;
+
+    for (const food of Object.keys(traitsA.foodPreference)) {
+        const pA = traitsA.foodPreference[food] || 0;
+        const pB = traitsB.foodPreference[food] || 0;
+        foodOverlap += pA * pB;
+        sumA += pA * pA;
+        sumB += pB * pB;
+    }
+
+    // Pianka's formula: O = sum(pAi * pBi) / sqrt(sum(pAi^2) * sum(pBi^2))
+    const denominator = Math.sqrt(sumA * sumB);
+    const foodPianka = denominator > 0 ? foodOverlap / denominator : 0;
+
+    // Size overlap (based on how similar sizes are)
+    const sizeDiff = Math.abs(traitsA.size - traitsB.size);
+    const maxSize = Math.max(traitsA.size, traitsB.size, 1);
+    const sizeOverlap = 1 - (sizeDiff / maxSize);
+
+    // Depth/spatial overlap
+    const depthDiff = Math.abs(traitsA.depthPreference - traitsB.depthPreference);
+    const spatialOverlap = 1 - depthDiff;
+
+    // Weighted average of overlaps
+    return foodPianka * 0.5 + sizeOverlap * 0.3 + spatialOverlap * 0.2;
+}
+
+/**
+ * Calculate trait divergence between species
+ */
+function calculateTraitDivergence(traitsA, traitsB) {
+    return {
+        sizeDivergence: Math.abs(traitsA.size - traitsB.size) / CONFIG.MAX_NODES,
+        efficiencyDivergence: Math.abs(traitsA.efficiency - traitsB.efficiency),
+        activityDivergence: Math.abs(traitsA.activity - traitsB.activity),
+        depthDivergence: Math.abs(traitsA.depthPreference - traitsB.depthPreference),
+
+        // Overall divergence score
+        total: (
+            Math.abs(traitsA.size - traitsB.size) / CONFIG.MAX_NODES +
+            Math.abs(traitsA.efficiency - traitsB.efficiency) +
+            Math.abs(traitsA.activity - traitsB.activity) +
+            Math.abs(traitsA.depthPreference - traitsB.depthPreference)
+        ) / 4
+    };
+}
+
+/**
+ * Calculate selection pressures from character displacement
+ */
+function calculateDisplacementSelection(traitsA, traitsB, overlap) {
+    if (overlap < 0.3) {
+        // Low overlap = no strong selection pressure
+        return { direction: 'stable', strength: 0 };
+    }
+
+    // High overlap creates selection for divergence
+    const strength = (overlap - 0.3) / 0.7;  // 0-1 scale
+
+    // Determine divergence direction based on current trait values
+    // Species should diverge AWAY from each other
+    return {
+        direction: 'diverge',
+        strength,
+
+        // Specific trait selection for species A (opposite for B)
+        sizeSelection: traitsA.size > traitsB.size ? 0.1 * strength : -0.1 * strength,
+        efficiencySelection: traitsA.efficiency > traitsB.efficiency ? 0.05 * strength : -0.05 * strength,
+        depthSelection: traitsA.depthPreference > traitsB.depthPreference ? 0.05 * strength : -0.05 * strength
+    };
+}
+
+/**
+ * Apply character displacement mutations during reproduction
+ * Biases mutations toward divergence when competition is high
+ */
+export function applyDisplacementMutation(genome, displacementPressure) {
+    if (!displacementPressure || displacementPressure.strength < 0.2) {
+        return genome;  // No significant pressure
+    }
+
+    const mutationBias = displacementPressure.strength * 0.5;
+
+    // Size displacement
+    if (displacementPressure.sizeSelection && Math.random() < mutationBias * 0.3) {
+        // Add or remove nodes in the direction of selection
+        if (displacementPressure.sizeSelection > 0 && genome.nodes.length < CONFIG.MAX_NODES) {
+            // Selection for larger size - could add node
+            // (actual node addition happens elsewhere, this just flags it)
+            genome.displacement_size_bias = 0.1;
+        } else if (displacementPressure.sizeSelection < 0 && genome.nodes.length > 3) {
+            genome.displacement_size_bias = -0.1;
+        }
+    }
+
+    // Efficiency displacement
+    if (displacementPressure.efficiencySelection && Math.random() < mutationBias * 0.3) {
+        const effChange = displacementPressure.efficiencySelection * 0.05;
+        if (genome.metabolism) {
+            genome.metabolism.efficiency = Math.max(0.1, Math.min(1,
+                genome.metabolism.efficiency + effChange
+            ));
+        }
+    }
+
+    // Mark as having experienced displacement selection
+    genome.displacement_selection = {
+        tick: state.tick,
+        strength: displacementPressure.strength
+    };
+
+    return genome;
+}
+
+/**
+ * Get character displacement summary for all species pairs
+ */
+export function getCharacterDisplacementSummary() {
+    const pairs = Array.from(displacementDynamics.values());
+
+    if (pairs.length === 0) {
+        return {
+            pairsAnalyzed: 0,
+            avgOverlap: 0,
+            highOverlapPairs: 0,
+            avgDivergence: 0
+        };
+    }
+
+    const avgOverlap = pairs.reduce((sum, p) => sum + p.nicheOverlap, 0) / pairs.length;
+    const avgDivergence = pairs.reduce((sum, p) => sum + p.divergence.total, 0) / pairs.length;
+    const highOverlapPairs = pairs.filter(p => p.nicheOverlap > 0.7).length;
+    const activeDisplacement = pairs.filter(p => p.displacementRate > 0).length;
+
+    return {
+        pairsAnalyzed: pairs.length,
+        avgOverlap,
+        avgDivergence,
+        highOverlapPairs,
+        activeDisplacement,
+        topCompetingPairs: pairs
+            .sort((a, b) => b.nicheOverlap - a.nicheOverlap)
+            .slice(0, 5)
+            .map(p => ({
+                species: `${p.speciesA} vs ${p.speciesB}`,
+                overlap: p.nicheOverlap.toFixed(2),
+                coexistenceProb: p.coexistenceProbability.toFixed(2)
+            }))
+    };
+}
+
+/**
+ * Check for competitive exclusion
+ * Returns true if one species should be driven to extinction
+ */
+export function checkCompetitiveExclusion(speciesA, speciesB, agents) {
+    const dynamics = analyzeCharacterDisplacement(speciesA, speciesB, agents);
+    if (!dynamics) return { exclusion: false };
+
+    // Gause's competitive exclusion principle
+    // Complete niche overlap (>0.9) leads to exclusion
+    if (dynamics.nicheOverlap > 0.9) {
+        const membersA = agents.filter(a => a.alive && a.genome.species_marker === speciesA);
+        const membersB = agents.filter(a => a.alive && a.genome.species_marker === speciesB);
+
+        // Larger population has advantage
+        const winner = membersA.length > membersB.length ? speciesA : speciesB;
+        const loser = winner === speciesA ? speciesB : speciesA;
+
+        return {
+            exclusion: true,
+            winner,
+            loser,
+            overlap: dynamics.nicheOverlap,
+            reason: 'complete_niche_overlap'
+        };
+    }
+
+    return { exclusion: false, overlap: dynamics.nicheOverlap };
+}

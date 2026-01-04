@@ -227,10 +227,42 @@ export const CONFIG = {
     NOVEL_GENE_RATE: 0.1,
 
     // === IMMUNITY ===
+    // CRISPR (Adaptive Immunity)
     CRISPR_MEMORY_FORMATION_RATE: 0.3,
     CRISPR_MEMORY_SLOTS: 10,
     CRISPR_MEMORY_DECAY: 0.001,
     CRISPR_INHERITANCE_RATE: 0.5,
+
+    // Innate Immunity
+    INNATE_BASELINE_RESISTANCE: 0.2,     // Non-specific resistance to all pathogens
+    INNATE_INFLAMMATION_COST: 0.05,       // Metabolic cost when immune system is activated
+    INNATE_FEVER_BONUS: 0.15,             // Resistance bonus when fever is active
+    INNATE_FEVER_DAMAGE: 0.02,            // Self-damage from fever (trade-off)
+    INNATE_COMPLEMENT_EFFICIENCY: 0.3,    // Pathogen opsonization effectiveness
+
+    // MHC (Major Histocompatibility Complex)
+    MHC_LOCI_COUNT: 2,                    // Number of MHC loci
+    MHC_ALLELE_RANGE: 1000,               // Range of possible MHC alleles
+    MHC_HETEROZYGOTE_BONUS: 0.15,         // Resistance bonus for heterozygotes
+    MHC_PATHOGEN_COVERAGE: 0.1,           // Fraction of pathogens each allele covers
+
+    // Immune Trade-offs
+    AUTOIMMUNITY_THRESHOLD: 0.8,          // Immune investment level that risks autoimmunity
+    AUTOIMMUNITY_DAMAGE: 0.03,            // Self-damage from autoimmune response
+    IMMUNOPATHOLOGY_THRESHOLD: 0.9,       // Strong immune response causes collateral damage
+    IMMUNOPATHOLOGY_DAMAGE: 0.05,         // Damage from excessive immune response
+    TOLERANCE_BENEFIT: 0.3,               // Energy saved by tolerating low-level infection
+
+    // Maternal Immunity
+    MATERNAL_ANTIBODY_DURATION: 100,      // Ticks of passive protection in offspring
+    MATERNAL_IMMUNITY_STRENGTH: 0.6,      // Strength of inherited passive immunity
+    MATERNAL_MEMORY_TRANSFER_COUNT: 3,    // Max number of memories transferred
+
+    // Affinity Maturation
+    AFFINITY_MATURATION_RATE: 0.05,       // Memory improvement per successful defense
+    MEMORY_COMPETITION_SLOTS: 8,          // Slots for highest-affinity memories
+    IMMUNE_SENESCENCE_AGE: 400,           // Age at which immune function declines
+    IMMUNE_SENESCENCE_RATE: 0.002,        // Rate of immune decline with age
 
     // === RENDERING ===
     CANVAS_WIDTH: 1200,

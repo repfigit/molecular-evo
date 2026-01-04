@@ -1515,6 +1515,269 @@ export function deserializeEnvironment(data) {
     };
 }
 
+// ============================================================================
+// NICHE CONSTRUCTION
+// ============================================================================
+// Organisms modify their environment, creating ecological inheritance
+// Examples: beaver dams, earthworm soil modification, bacterial biofilms
+// This creates evolutionary feedback loops
+
+/**
+ * Apply niche construction effects from an agent
+ * Agents modify local environment based on their metabolism and behavior
+ */
+export function applyNicheConstruction(agent, dt) {
+    if (!agent.alive) return;
+
+    const x = agent.position.x;
+    const y = agent.position.y;
+    const cell = getResourceCell(x, y);
+    if (!cell) return;
+
+    const metabolism = agent.genome.metabolism;
+    const nicheConstruction = agent.genome.niche_construction || {};
+
+    // 1. WASTE PRODUCT DEPOSITION
+    // Different metabolisms produce different waste products
+    // These become resources for other species
+    const wasteProduct = getWasteProduct(metabolism.primary_food);
+    if (wasteProduct && nicheConstruction.waste_production !== false) {
+        const wasteAmount = metabolism.efficiency * 0.005 * dt;
+        cell[wasteProduct] = Math.min(
+            CONFIG.RESOURCE_MAX,
+            (cell[wasteProduct] || 0) + wasteAmount
+        );
+    }
+
+    // 2. DECOMPOSER EFFECTS
+    // Decomposers break down organic matter into chemicals
+    if (metabolism.primary_food === 'organic_matter' || metabolism.secondary_food === 'organic_matter') {
+        const decomposerStrength = nicheConstruction.decomposer_efficiency || 0.5;
+        const conversionAmount = cell.organic_matter * decomposerStrength * 0.01 * dt;
+
+        if (conversionAmount > 0.001) {
+            cell.organic_matter -= conversionAmount;
+            cell.chemical_A = Math.min(CONFIG.RESOURCE_MAX, cell.chemical_A + conversionAmount * 0.5);
+            cell.chemical_B = Math.min(CONFIG.RESOURCE_MAX, cell.chemical_B + conversionAmount * 0.5);
+        }
+    }
+
+    // 3. BIOFILM FORMATION (for social organisms)
+    if (agent.genome.social?.cooperation_willingness > 0.5) {
+        const biofilmStrength = agent.genome.social.cooperation_willingness * 0.3;
+
+        // Biofilms modify local viscosity (protection)
+        if (!cell.biofilm) cell.biofilm = 0;
+        cell.biofilm = Math.min(1, cell.biofilm + biofilmStrength * 0.001 * dt);
+
+        // Biofilms slowly decay without maintenance
+        cell.biofilm *= (1 - 0.0005 * dt);
+    }
+
+    // 4. NUTRIENT MINING (bringing resources from depth)
+    // Large organisms can access deeper nutrients
+    if (agent.genome.nodes?.length > 8) {
+        const miningStrength = (agent.genome.nodes.length - 8) / CONFIG.MAX_NODES;
+        const miningAmount = miningStrength * 0.002 * dt;
+
+        // "Mine" resources from the global pool
+        cell.chemical_A = Math.min(CONFIG.RESOURCE_MAX, cell.chemical_A + miningAmount);
+        cell.chemical_B = Math.min(CONFIG.RESOURCE_MAX, cell.chemical_B + miningAmount);
+    }
+
+    // 5. SHADE/LIGHT MODIFICATION
+    // Large organisms reduce light for cells beneath them
+    if (metabolism.primary_food === 'light' && agent.genome.nodes?.length > 5) {
+        const shadeEffect = (agent.genome.nodes.length / CONFIG.MAX_NODES) * 0.3;
+        // Reduce light in surrounding cells (creates shaded microhabitat)
+        applyLocalLightReduction(x, y, shadeEffect);
+    }
+
+    // 6. TERRITORIAL MARKING (pheromone-like)
+    if (agent.genome.social?.competition?.aggression > 0.5) {
+        if (!cell.territorial_marks) cell.territorial_marks = new Map();
+        cell.territorial_marks.set(agent.genome.species_marker, {
+            strength: agent.genome.social.competition.aggression,
+            age: 0
+        });
+    }
+}
+
+/**
+ * Get waste product type based on food source
+ */
+function getWasteProduct(primaryFood) {
+    switch (primaryFood) {
+        case 'chemical_A':
+            return 'chemical_B';  // Chemical A consumers produce chemical B
+        case 'chemical_B':
+            return 'chemical_A';  // Chemical B consumers produce chemical A
+        case 'light':
+            return 'organic_matter';  // Photosynthesizers produce organic matter
+        case 'organic_matter':
+            return 'chemical_A';  // Decomposers produce chemicals
+        default:
+            return null;
+    }
+}
+
+/**
+ * Apply local light reduction (shading effect)
+ */
+function applyLocalLightReduction(x, y, shadeEffect) {
+    const env = state.environment;
+    if (!env) return;
+
+    const cx = Math.floor(x / env.cellSize);
+    const cy = Math.floor(y / env.cellSize);
+
+    // Affect surrounding cells (shade spreads)
+    for (let dy = 0; dy <= 2; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            const nx = cx + dx;
+            const ny = cy + dy;  // Only affects cells "below" (higher y)
+
+            if (nx < 0 || nx >= env.cols || ny < 0 || ny >= env.rows) continue;
+
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const falloff = 1 / (1 + dist);
+            env.resources[ny][nx].light *= (1 - shadeEffect * falloff * 0.01);
+        }
+    }
+}
+
+/**
+ * Process niche construction effects for all agents
+ */
+export function processNicheConstruction(agents, dt) {
+    for (const agent of agents) {
+        if (!agent.alive) continue;
+        applyNicheConstruction(agent, dt);
+    }
+
+    // Decay territorial marks
+    decayTerritorialMarks(dt);
+
+    // Decay biofilms
+    decayBiofilms(dt);
+}
+
+/**
+ * Decay territorial marks over time
+ */
+function decayTerritorialMarks(dt) {
+    const env = state.environment;
+    if (!env) return;
+
+    for (let y = 0; y < env.rows; y++) {
+        for (let x = 0; x < env.cols; x++) {
+            const cell = env.resources[y][x];
+            if (!cell.territorial_marks) continue;
+
+            for (const [species, mark] of cell.territorial_marks.entries()) {
+                mark.age += dt;
+                mark.strength *= (1 - 0.005 * dt);  // Decay
+
+                if (mark.strength < 0.1 || mark.age > 500) {
+                    cell.territorial_marks.delete(species);
+                }
+            }
+
+            if (cell.territorial_marks.size === 0) {
+                cell.territorial_marks = null;
+            }
+        }
+    }
+}
+
+/**
+ * Decay biofilms over time (without organisms maintaining them)
+ */
+function decayBiofilms(dt) {
+    const env = state.environment;
+    if (!env) return;
+
+    for (let y = 0; y < env.rows; y++) {
+        for (let x = 0; x < env.cols; x++) {
+            const cell = env.resources[y][x];
+            if (cell.biofilm && cell.biofilm > 0) {
+                cell.biofilm *= (1 - 0.001 * dt);
+                if (cell.biofilm < 0.01) cell.biofilm = 0;
+            }
+        }
+    }
+}
+
+/**
+ * Get niche construction bonus for an agent
+ * Agents benefit from environments modified by their ancestors
+ */
+export function getNicheConstructionBonus(agent) {
+    const cell = getResourceCell(agent.position.x, agent.position.y);
+    if (!cell) return 0;
+
+    let bonus = 0;
+
+    // Biofilm bonus for social organisms
+    if (cell.biofilm > 0 && agent.genome.social?.cooperation_willingness > 0.3) {
+        bonus += cell.biofilm * 0.1;  // Protection from biofilm
+    }
+
+    // Territorial bonus for matching species
+    if (cell.territorial_marks?.has(agent.genome.species_marker)) {
+        bonus += 0.05;  // Home territory advantage
+    }
+
+    // Territorial penalty for non-matching species
+    if (cell.territorial_marks) {
+        for (const [species, mark] of cell.territorial_marks.entries()) {
+            if (species !== agent.genome.species_marker) {
+                bonus -= mark.strength * 0.03;  // Penalty for being in rival territory
+            }
+        }
+    }
+
+    return bonus;
+}
+
+/**
+ * Get niche construction statistics
+ */
+export function getNicheConstructionStats() {
+    const env = state.environment;
+    if (!env) return null;
+
+    let totalBiofilm = 0;
+    let biofilmCells = 0;
+    let territorialCells = 0;
+    let speciesWithTerritory = new Set();
+
+    for (let y = 0; y < env.rows; y++) {
+        for (let x = 0; x < env.cols; x++) {
+            const cell = env.resources[y][x];
+
+            if (cell.biofilm > 0.01) {
+                totalBiofilm += cell.biofilm;
+                biofilmCells++;
+            }
+
+            if (cell.territorial_marks?.size > 0) {
+                territorialCells++;
+                for (const species of cell.territorial_marks.keys()) {
+                    speciesWithTerritory.add(species);
+                }
+            }
+        }
+    }
+
+    return {
+        biofilmCoverage: biofilmCells / (env.rows * env.cols),
+        avgBiofilmStrength: biofilmCells > 0 ? totalBiofilm / biofilmCells : 0,
+        territorialCoverage: territorialCells / (env.rows * env.cols),
+        speciesWithTerritory: speciesWithTerritory.size
+    };
+}
+
 /**
  * Process agent feeding from environment
  */

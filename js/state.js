@@ -6,6 +6,16 @@
 import { CONFIG } from './config.js';
 
 /**
+ * Entity index Maps for O(1) lookups by ID
+ * These are maintained alongside the arrays for fast access
+ */
+export const entityIndex = {
+    agents: new Map(),      // id -> agent
+    viruses: new Map(),     // id -> virus
+    dnaFragments: new Map() // id -> dnaFragment
+};
+
+/**
  * The main simulation state object
  */
 export const state = {
@@ -178,6 +188,11 @@ export function resetState() {
     state.physicsTime = 0;
     state.renderTime = 0;
     state.systemsTime = 0;
+
+    // Clear entity indices
+    entityIndex.agents.clear();
+    entityIndex.viruses.clear();
+    entityIndex.dnaFragments.clear();
 }
 
 /**
@@ -396,6 +411,9 @@ export function deserializeState(json) {
                 }));
         }
 
+        // Rebuild entity indices for O(1) lookups
+        rebuildEntityIndices();
+
         updateStats();
 
         return true;
@@ -406,17 +424,125 @@ export function deserializeState(json) {
 }
 
 /**
- * Get an agent by ID
+ * Get an agent by ID - O(1) lookup
  */
 export function getAgentById(id) {
-    return state.agents.find(a => a.id === id);
+    return entityIndex.agents.get(id);
 }
 
 /**
- * Get a virus by ID
+ * Get a virus by ID - O(1) lookup
  */
 export function getVirusById(id) {
-    return state.viruses.find(v => v.id === id);
+    return entityIndex.viruses.get(id);
+}
+
+/**
+ * Get a DNA fragment by ID - O(1) lookup
+ */
+export function getDnaFragmentById(id) {
+    return entityIndex.dnaFragments.get(id);
+}
+
+/**
+ * Add an agent to the simulation with proper indexing
+ */
+export function addAgent(agent) {
+    state.agents.push(agent);
+    entityIndex.agents.set(agent.id, agent);
+    return agent;
+}
+
+/**
+ * Add multiple agents efficiently
+ */
+export function addAgents(agents) {
+    for (const agent of agents) {
+        state.agents.push(agent);
+        entityIndex.agents.set(agent.id, agent);
+    }
+}
+
+/**
+ * Remove an agent by ID with proper cleanup
+ */
+export function removeAgentById(id) {
+    const agent = entityIndex.agents.get(id);
+    if (!agent) return null;
+
+    entityIndex.agents.delete(id);
+    const idx = state.agents.indexOf(agent);
+    if (idx !== -1) {
+        state.agents.splice(idx, 1);
+    }
+    return agent;
+}
+
+/**
+ * Add a virus to the simulation with proper indexing
+ */
+export function addVirus(virus) {
+    state.viruses.push(virus);
+    entityIndex.viruses.set(virus.id, virus);
+    return virus;
+}
+
+/**
+ * Remove a virus by ID
+ */
+export function removeVirusById(id) {
+    const virus = entityIndex.viruses.get(id);
+    if (!virus) return null;
+
+    entityIndex.viruses.delete(id);
+    const idx = state.viruses.indexOf(virus);
+    if (idx !== -1) {
+        state.viruses.splice(idx, 1);
+    }
+    return virus;
+}
+
+/**
+ * Add a DNA fragment with proper indexing
+ */
+export function addDnaFragment(fragment) {
+    state.dnaFragments.push(fragment);
+    entityIndex.dnaFragments.set(fragment.id, fragment);
+    return fragment;
+}
+
+/**
+ * Remove a DNA fragment by ID
+ */
+export function removeDnaFragmentById(id) {
+    const fragment = entityIndex.dnaFragments.get(id);
+    if (!fragment) return null;
+
+    entityIndex.dnaFragments.delete(id);
+    const idx = state.dnaFragments.indexOf(fragment);
+    if (idx !== -1) {
+        state.dnaFragments.splice(idx, 1);
+    }
+    return fragment;
+}
+
+/**
+ * Rebuild entity indices from arrays (used after deserialization)
+ */
+export function rebuildEntityIndices() {
+    entityIndex.agents.clear();
+    entityIndex.viruses.clear();
+    entityIndex.dnaFragments.clear();
+
+    for (const agent of state.agents) {
+        entityIndex.agents.set(agent.id, agent);
+    }
+    for (const virus of state.viruses) {
+        entityIndex.viruses.set(virus.id, virus);
+    }
+    for (const fragment of state.dnaFragments) {
+        entityIndex.dnaFragments.set(fragment.id, fragment);
+    }
 }
 
 /**
@@ -425,6 +551,11 @@ export function getVirusById(id) {
 export function removeDeadAgents() {
     // Filter out dead agents
     const deadAgents = state.agents.filter(a => !a.alive || a.energy <= CONFIG.DEATH_ENERGY_THRESHOLD);
+
+    // Remove dead agents from index
+    for (const agent of deadAgents) {
+        entityIndex.agents.delete(agent.id);
+    }
 
     // Remove from cooperative links
     state.cooperativeLinks = state.cooperativeLinks.filter(link =>
@@ -447,6 +578,13 @@ export function removeDeadAgents() {
  */
 export function removeDeadViruses() {
     const before = state.viruses.length;
+    const deadViruses = state.viruses.filter(v => v.lifespan <= 0);
+
+    // Remove from index
+    for (const virus of deadViruses) {
+        entityIndex.viruses.delete(virus.id);
+    }
+
     state.viruses = state.viruses.filter(v => v.lifespan > 0);
     return before - state.viruses.length;
 }

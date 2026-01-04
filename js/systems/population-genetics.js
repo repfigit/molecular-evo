@@ -611,3 +611,322 @@ export function getSexualRecombinationAdvantage(speciesMarker) {
     // This advantage scales with interference level
     return interference * 0.1;  // Up to 10% advantage when interference is high
 }
+
+// ============================================================================
+// MULLER'S RATCHET
+// ============================================================================
+// In asexual populations, deleterious mutations accumulate irreversibly
+// because there's no recombination to recreate the least-loaded genotype.
+// This is one of the major evolutionary advantages of sexual reproduction.
+
+// Track asexual generation counts per lineage
+const lineageAsexualGenerations = new Map();  // lineage_id -> asexual generation count
+
+/**
+ * Record a reproduction event for Muller's Ratchet tracking
+ * @param {string} parentLineage - Parent's lineage ID
+ * @param {string} childLineage - Child's lineage ID
+ * @param {boolean} wasSexual - Whether reproduction was sexual
+ */
+export function recordReproduction(parentLineage, childLineage, wasSexual) {
+    if (wasSexual) {
+        // Sexual reproduction resets the ratchet - recombination can
+        // recreate less-loaded genotypes
+        lineageAsexualGenerations.set(childLineage, 0);
+    } else {
+        // Asexual reproduction: inherit parent's count + 1
+        const parentCount = lineageAsexualGenerations.get(parentLineage) || 0;
+        lineageAsexualGenerations.set(childLineage, parentCount + 1);
+    }
+}
+
+/**
+ * Get the number of consecutive asexual generations for a lineage
+ */
+export function getAsexualGenerationCount(lineageId) {
+    return lineageAsexualGenerations.get(lineageId) || 0;
+}
+
+/**
+ * Apply Muller's Ratchet effects to a genome during reproduction
+ * Long asexual lineages accumulate deleterious mutations that cannot be purged
+ *
+ * @param {Object} genome - The offspring's genome
+ * @param {number} asexualGenerations - Number of consecutive asexual generations
+ * @returns {Object} Modified genome with potential ratchet effects
+ */
+export function applyMullersRatchet(genome, asexualGenerations) {
+    if (asexualGenerations < 5) {
+        // Ratchet hasn't engaged yet - need multiple generations
+        return genome;
+    }
+
+    // Probability of irreversible mutation fixation increases with asexual generations
+    // This models the loss of the "least loaded class" in asexual populations
+    const ratchetProbability = Math.min(0.3, 0.02 * (asexualGenerations - 4));
+
+    if (Math.random() < ratchetProbability) {
+        // Ratchet clicks - accumulate a slightly deleterious mutation that can't be removed
+        if (!genome.genetic_load) {
+            genome.genetic_load = { lethal_equivalents: 0, mildly_deleterious: 0 };
+        }
+
+        // Mildly deleterious mutations accumulate (these are the ones that fix by drift)
+        genome.genetic_load.mildly_deleterious =
+            (genome.genetic_load.mildly_deleterious || 0) + 0.02;
+
+        // Occasionally, a more severe mutation fixes
+        if (Math.random() < 0.1) {
+            genome.genetic_load.lethal_equivalents =
+                (genome.genetic_load.lethal_equivalents || 0) + 0.05;
+        }
+
+        // Mark the ratchet event
+        genome.ratchet_clicks = (genome.ratchet_clicks || 0) + 1;
+    }
+
+    // Track asexual generation count in genome for inheritance
+    genome.asexual_generation_count = asexualGenerations;
+
+    return genome;
+}
+
+/**
+ * Calculate fitness penalty from Muller's Ratchet accumulation
+ * @param {Object} genome - The genome to evaluate
+ * @returns {number} Fitness multiplier (0-1, lower = more ratchet damage)
+ */
+export function getMullersRatchetPenalty(genome) {
+    if (!genome.genetic_load) return 1.0;
+
+    const mildlyDeleterious = genome.genetic_load.mildly_deleterious || 0;
+    const lethalEquivalents = genome.genetic_load.lethal_equivalents || 0;
+
+    // Multiplicative fitness model
+    // Each mildly deleterious mutation reduces fitness by ~2%
+    // Lethal equivalents have stronger effect
+    const mildPenalty = Math.pow(0.98, mildlyDeleterious * 50);
+    const lethalPenalty = Math.exp(-lethalEquivalents);
+
+    return mildPenalty * lethalPenalty;
+}
+
+/**
+ * Get advantage of sexual reproduction from escaping Muller's Ratchet
+ * @param {number} asexualGenerations - Current asexual generation count
+ * @returns {number} Fitness advantage for switching to sexual reproduction
+ */
+export function getSexualRatchetAdvantage(asexualGenerations) {
+    if (asexualGenerations < 5) return 0;
+
+    // Advantage scales with how "stuck" the asexual lineage is
+    const ratchetDepth = Math.min(20, asexualGenerations - 4);
+
+    // Sexual reproduction can "reset" and escape the ratchet
+    return 0.02 * ratchetDepth;  // Up to 32% advantage at 20+ asexual generations
+}
+
+/**
+ * Get Muller's Ratchet statistics
+ */
+export function getMullersRatchetStats() {
+    const lineages = Array.from(lineageAsexualGenerations.entries());
+
+    if (lineages.length === 0) {
+        return {
+            trackedLineages: 0,
+            avgAsexualGenerations: 0,
+            maxAsexualGenerations: 0,
+            ratchetRiskLineages: 0
+        };
+    }
+
+    const generations = lineages.map(([_, count]) => count);
+    const total = generations.reduce((a, b) => a + b, 0);
+    const max = Math.max(...generations);
+    const atRisk = generations.filter(g => g > 10).length;
+
+    return {
+        trackedLineages: lineages.length,
+        avgAsexualGenerations: total / lineages.length,
+        maxAsexualGenerations: max,
+        ratchetRiskLineages: atRisk,
+        ratchetActiveLineages: generations.filter(g => g > 5).length
+    };
+}
+
+/**
+ * Clean up old lineage tracking (remove extinct lineages)
+ */
+export function cleanupRatchetTracking(activeLineages) {
+    const activeSet = new Set(activeLineages);
+
+    for (const lineageId of lineageAsexualGenerations.keys()) {
+        if (!activeSet.has(lineageId)) {
+            lineageAsexualGenerations.delete(lineageId);
+        }
+    }
+}
+
+// ============================================================================
+// COALESCENT THEORY AND POPULATION HISTORY
+// ============================================================================
+// Track genealogical relationships to estimate population history
+// Used for molecular clock calibration and detecting past bottlenecks
+
+// Lineage tracking for coalescent analysis
+const lineageParents = new Map();  // lineage_id -> parent_lineage_id
+const lineageBirthTicks = new Map();  // lineage_id -> birth tick
+
+/**
+ * Record lineage relationship for coalescent analysis
+ */
+export function recordLineage(childLineage, parentLineage, birthTick) {
+    lineageParents.set(childLineage, parentLineage);
+    lineageBirthTicks.set(childLineage, birthTick);
+}
+
+/**
+ * Find Most Recent Common Ancestor (MRCA) of two lineages
+ * Returns the MRCA lineage ID and coalescence time
+ */
+export function findMRCA(lineageA, lineageB) {
+    // Build ancestor chain for lineage A
+    const ancestorsA = new Map();  // lineage_id -> distance from A
+    let current = lineageA;
+    let distance = 0;
+
+    while (current && distance < 1000) {  // Limit search depth
+        ancestorsA.set(current, distance);
+        current = lineageParents.get(current);
+        distance++;
+    }
+
+    // Walk up lineage B's ancestry looking for intersection
+    current = lineageB;
+    distance = 0;
+
+    while (current && distance < 1000) {
+        if (ancestorsA.has(current)) {
+            // Found MRCA
+            const distanceFromA = ancestorsA.get(current);
+            const totalDistance = distanceFromA + distance;
+            const birthTick = lineageBirthTicks.get(current) || 0;
+
+            return {
+                mrca: current,
+                distanceFromA: distanceFromA,
+                distanceFromB: distance,
+                totalDistance: totalDistance,
+                coalescenceTime: birthTick
+            };
+        }
+        current = lineageParents.get(current);
+        distance++;
+    }
+
+    // No common ancestor found (different founding populations)
+    return null;
+}
+
+/**
+ * Estimate effective population size from coalescent times
+ * Ne ≈ average coalescence time / 2 (for haploid populations)
+ */
+export function estimateNeFromCoalescent(sampleLineages) {
+    if (sampleLineages.length < 2) return null;
+
+    let totalCoalescenceTime = 0;
+    let comparisons = 0;
+
+    // Sample pairs and find their coalescence times
+    const sampleSize = Math.min(20, sampleLineages.length);
+
+    for (let i = 0; i < sampleSize; i++) {
+        const lineageA = sampleLineages[Math.floor(Math.random() * sampleLineages.length)];
+        const lineageB = sampleLineages[Math.floor(Math.random() * sampleLineages.length)];
+
+        if (lineageA === lineageB) continue;
+
+        const mrca = findMRCA(lineageA, lineageB);
+        if (mrca) {
+            totalCoalescenceTime += mrca.totalDistance;
+            comparisons++;
+        }
+    }
+
+    if (comparisons === 0) return null;
+
+    const avgCoalescenceTime = totalCoalescenceTime / comparisons;
+
+    // Ne estimate (simplified)
+    return avgCoalescenceTime / 2;
+}
+
+/**
+ * Calculate Tajima's D statistic (detects selection)
+ * D > 0: Balancing selection or population contraction
+ * D < 0: Positive selection (sweep) or population expansion
+ * D ≈ 0: Neutral evolution
+ */
+export function calculateTajimasD(speciesMarker, agents) {
+    const members = agents.filter(a =>
+        a.alive && a.genome.species_marker === speciesMarker
+    );
+
+    if (members.length < 5) return { D: 0, interpretation: 'insufficient_data' };
+
+    // Get neutral marker variation
+    const snpVariation = members.map(a =>
+        a.genome.neutral_markers?.snps || []
+    );
+
+    // Calculate number of segregating sites (S)
+    let segregatingSites = 0;
+    const snpLength = snpVariation[0]?.length || 0;
+
+    for (let i = 0; i < snpLength; i++) {
+        const alleles = snpVariation.map(snps => snps[i] || 0);
+        const hasVariation = alleles.some(a => a !== alleles[0]);
+        if (hasVariation) segregatingSites++;
+    }
+
+    // Calculate pairwise differences (π)
+    let totalDiffs = 0;
+    let pairCount = 0;
+
+    for (let i = 0; i < members.length; i++) {
+        for (let j = i + 1; j < members.length; j++) {
+            const snpsA = snpVariation[i];
+            const snpsB = snpVariation[j];
+            let diffs = 0;
+
+            for (let k = 0; k < snpLength; k++) {
+                if ((snpsA[k] || 0) !== (snpsB[k] || 0)) diffs++;
+            }
+
+            totalDiffs += diffs;
+            pairCount++;
+        }
+    }
+
+    const pi = pairCount > 0 ? totalDiffs / pairCount : 0;
+
+    // Watterson's estimator of theta
+    const n = members.length;
+    let a1 = 0;
+    for (let i = 1; i < n; i++) a1 += 1 / i;
+    const thetaW = segregatingSites / a1;
+
+    // Tajima's D (simplified)
+    if (thetaW === 0) return { D: 0, interpretation: 'no_variation' };
+
+    const D = (pi - thetaW) / Math.sqrt(thetaW);  // Simplified, missing variance term
+
+    let interpretation;
+    if (D > 1.5) interpretation = 'balancing_selection_or_contraction';
+    else if (D < -1.5) interpretation = 'positive_selection_or_expansion';
+    else interpretation = 'neutral';
+
+    return { D, pi, thetaW, segregatingSites, interpretation };
+}

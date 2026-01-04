@@ -4,7 +4,7 @@
  */
 
 import { CONFIG } from './config.js';
-import { state, resetState, updateStats, recordHistory, ageVisualEvents } from './state.js';
+import { state, resetState, updateStats, recordHistory, ageVisualEvents, addAgent, addAgents, entityIndex } from './state.js';
 import { SpatialHash } from './utils/spatial.js';
 
 // Core modules
@@ -31,6 +31,7 @@ import { processCorpses } from './systems/corpse.js';
 // Rendering
 import { createRenderer } from './rendering/renderer.js';
 import { getAgentColor } from './rendering/agentRenderer.js';
+import * as EvolutionaryViz from './rendering/evolutionaryVisualizationManager.js';
 
 // UI
 import { initGraphs, updateGraphs } from './ui/graphs.js';
@@ -115,6 +116,10 @@ class Simulation {
         // Initialize graphs
         this.graphRenderers = initGraphs();
 
+        // Initialize evolutionary visualizations
+        EvolutionaryViz.initializeEvolutionaryVisualizations();
+        console.log('Evolutionary visualizations initialized');
+
         // Mark as running
         state.running = true;
         state.paused = true;
@@ -133,7 +138,12 @@ class Simulation {
      */
     initPopulation() {
         // Create agents using proper genome and agent modules
-        state.agents = initializePopulation(CONFIG.INITIAL_AGENT_COUNT);
+        const newAgents = initializePopulation(CONFIG.INITIAL_AGENT_COUNT);
+
+        // Clear and rebuild with proper indexing
+        state.agents = [];
+        entityIndex.agents.clear();
+        addAgents(newAgents);
 
         // Add all agents to spatial hash
         for (const agent of state.agents) {
@@ -368,6 +378,9 @@ class Simulation {
         // Age visual events
         ageVisualEvents();
 
+        // Update evolutionary visualizations
+        EvolutionaryViz.updateEvolutionaryVisualizations();
+
         // Record history periodically
         if (state.tick % 100 === 0) {
             updateStats();
@@ -395,6 +408,13 @@ class Simulation {
     render() {
         // Use the renderer module
         this.renderer.render();
+
+        // Render evolutionary visualizations (after main render, before UI)
+        // Apply camera transform for world-space rendering
+        this.ctx.save();
+        this.renderer.applyCameraTransform(this.ctx);
+        EvolutionaryViz.renderEvolutionaryVisualizations(this.ctx);
+        this.ctx.restore();
 
         // Update UI if needed
         if (state.tick % 30 === 0) {
@@ -744,7 +764,7 @@ class Simulation {
                     y: Math.random() * CONFIG.WORLD_HEIGHT
                 }
             });
-            state.agents.push(agent);
+            addAgent(agent);  // Use indexed helper for O(1) lookups
             this.spatialHash.insert(agent);
         }
         this.showToast(`Added ${count} agents!`);
@@ -869,6 +889,39 @@ class Simulation {
                 case 'KeyC':
                     // Toggle overlay controls collapse
                     this.toggleOverlayControls();
+                    break;
+
+                // Evolutionary visualization toggles
+                case 'KeyM':
+                    // Toggle metapopulation view
+                    const metaResult = EvolutionaryViz.toggleVisualization(EvolutionaryViz.VISUALIZATION_MODES.METAPOPULATION);
+                    this.showToast(`Metapopulation: ${metaResult.active ? 'ON' : 'OFF'}`);
+                    break;
+                case 'KeyD':
+                    // Toggle character displacement view
+                    const dispResult = EvolutionaryViz.toggleVisualization(EvolutionaryViz.VISUALIZATION_MODES.CHARACTER_DISPLACEMENT);
+                    this.showToast(`Character Displacement: ${dispResult.active ? 'ON' : 'OFF'}`);
+                    break;
+                case 'KeyN':
+                    // Toggle niche construction view
+                    const nicheResult = EvolutionaryViz.toggleVisualization(EvolutionaryViz.VISUALIZATION_MODES.NICHE_CONSTRUCTION);
+                    this.showToast(`Niche Construction: ${nicheResult.active ? 'ON' : 'OFF'}`);
+                    break;
+                case 'KeyE':
+                    // Toggle evolutionary mechanisms view
+                    const evoResult = EvolutionaryViz.toggleVisualization(EvolutionaryViz.VISUALIZATION_MODES.EVOLUTIONARY_MECHANISMS);
+                    this.showToast(`Evolutionary Mechanisms: ${evoResult.active ? 'ON' : 'OFF'}`);
+                    break;
+                case 'KeyI':
+                    // Toggle evolutionary statistics panel
+                    const statsResult = EvolutionaryViz.toggleStatistics();
+                    this.showToast(`Evolution Stats: ${statsResult.statisticsVisible ? 'ON' : 'OFF'}`);
+                    break;
+                case 'KeyL':
+                    // Show visualization legend
+                    const legend = EvolutionaryViz.getVisualizationLegend();
+                    console.log('Visualization Legend:', legend);
+                    this.showToast('Legend printed to console (F12)');
                     break;
             }
         });
@@ -1265,6 +1318,10 @@ class Simulation {
         initFood(CONFIG.FOOD_MAX_COUNT / 2);
         this.initPopulation();
         initViruses(CONFIG.INITIAL_VIRUS_COUNT);
+
+        // Reset evolutionary visualizations
+        EvolutionaryViz.resetEvolutionaryVisualizations();
+        EvolutionaryViz.initializeEvolutionaryVisualizations();
 
         this.updateUI();
     }

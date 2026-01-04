@@ -50,44 +50,38 @@ export class SpatialHash {
     /**
      * Insert an entity into the hash
      * Entity must have an 'id' property and a 'position' property with x, y
+     * Uses Set for O(1) add/delete operations
      */
     insert(entity) {
         if (!entity || !entity.position) return;
 
         const key = this._hash(entity.position.x, entity.position.y);
 
-        // Remove from old cell if exists
+        // Remove from old cell if exists - O(1) with Set
         if (this.entityCells.has(entity.id)) {
             const oldKey = this.entityCells.get(entity.id);
             if (oldKey !== key) {
                 const oldCell = this.cells.get(oldKey);
                 if (oldCell) {
-                    const index = oldCell.indexOf(entity);
-                    if (index > -1) {
-                        oldCell.splice(index, 1);
-                    }
-                    if (oldCell.length === 0) {
+                    oldCell.delete(entity);  // O(1) Set delete
+                    if (oldCell.size === 0) {
                         this.cells.delete(oldKey);
                     }
                 }
             }
         }
 
-        // Add to new cell
+        // Add to new cell - O(1) with Set
         if (!this.cells.has(key)) {
-            this.cells.set(key, []);
+            this.cells.set(key, new Set());
         }
 
-        const cell = this.cells.get(key);
-        if (!cell.includes(entity)) {
-            cell.push(entity);
-        }
-
+        this.cells.get(key).add(entity);  // O(1) Set add (handles duplicates)
         this.entityCells.set(entity.id, key);
     }
 
     /**
-     * Remove an entity from the hash
+     * Remove an entity from the hash - O(1) with Set
      */
     remove(entity) {
         if (!entity || !this.entityCells.has(entity.id)) return;
@@ -96,11 +90,8 @@ export class SpatialHash {
         const cell = this.cells.get(key);
 
         if (cell) {
-            const index = cell.indexOf(entity);
-            if (index > -1) {
-                cell.splice(index, 1);
-            }
-            if (cell.length === 0) {
+            cell.delete(entity);  // O(1) Set delete
+            if (cell.size === 0) {
                 this.cells.delete(key);
             }
         }
@@ -288,7 +279,10 @@ export class SpatialHash {
         const pairs = [];
         const checked = new Set();
 
-        for (const [key, cell] of this.cells) {
+        for (const [key, cellSet] of this.cells) {
+            // Convert Set to array for indexed access
+            const cell = [...cellSet];
+
             // Check within this cell
             for (let i = 0; i < cell.length; i++) {
                 for (let j = i + 1; j < cell.length; j++) {
@@ -311,7 +305,7 @@ export class SpatialHash {
                 const adjCell = this.cells.get(adjKey);
 
                 if (adjCell) {
-                    for (const entityA of cell) {
+                    for (const entityA of cellSet) {
                         for (const entityB of adjCell) {
                             const pairKey = [entityA.id, entityB.id].sort().join('-');
                             if (!checked.has(pairKey)) {
@@ -338,7 +332,8 @@ export class SpatialHash {
 
         if (!cell) return [];
 
-        return cell.filter(e => e !== entity);
+        // Convert Set to array and filter
+        return [...cell].filter(e => e !== entity);
     }
 
     /**
@@ -347,7 +342,7 @@ export class SpatialHash {
     get size() {
         let count = 0;
         for (const cell of this.cells.values()) {
-            count += cell.length;
+            count += cell.size;  // Set.size instead of array.length
         }
         return count;
     }
@@ -372,7 +367,7 @@ export class SpatialHash {
                 width: this.cellSize,
                 height: this.cellSize,
                 key,
-                count: this.cells.get(key).length
+                count: this.cells.get(key).size  // Set.size instead of array.length
             });
         }
         return bounds;

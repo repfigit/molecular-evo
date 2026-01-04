@@ -9,7 +9,7 @@
  */
 
 import { CONFIG } from '../config.js';
-import { state, logEvent } from '../state.js';
+import { state, logEvent, addAgents } from '../state.js';
 import {
     cloneGenome,
     mutateGenome,
@@ -45,10 +45,8 @@ export function processEvolution(dt) {
     // Process reproductions
     const newAgents = processReproduction(eligible);
 
-    // Add new agents to population
-    for (const agent of newAgents) {
-        state.agents.push(agent);
-    }
+    // Add new agents to population with proper indexing
+    addAgents(newAgents);
 
     // Population control - softened culling as backup only
     // Primary regulation is through density-dependent effects
